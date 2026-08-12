@@ -35,9 +35,20 @@ export const ExtensionSimulator: React.FC = () => {
     customSelectors: []
   });
 
-  // Generate mock images for preset sites
+  // Generate mock images and update preset site title detection
   useEffect(() => {
     generateMockImages(selectedPresetSite);
+
+    if (selectedPresetSite === 'mangadex') {
+      setMangaTitle('Solo Leveling');
+      setChapterTitle('Chapter 179');
+    } else if (selectedPresetSite === 'manganato') {
+      setMangaTitle('One Piece');
+      setChapterTitle('Chapter 1050');
+    } else if (selectedPresetSite === 'aquamanga') {
+      setMangaTitle('Tales of Demons and Gods');
+      setChapterTitle('Chapter 415');
+    }
   }, [selectedPresetSite]);
 
   const generateMockImages = (site: string) => {

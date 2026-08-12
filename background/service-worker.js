@@ -172,9 +172,9 @@ async function executeDownloadTask(task, settings) {
   // Set status to packaging
   await updateTaskStatus(task.id, 'packaging');
 
-  // Generate target filename
-  const cleanManga = sanitizePathSegment(task.mangaTitle);
-  const cleanChap = sanitizePathSegment(task.chapterTitle);
+  // Generate target filename and clean manga folder path (no chapter numbers in folder name)
+  const cleanManga = sanitizePathSegment(cleanMangaTitle(task.mangaTitle));
+  const cleanChap = sanitizePathSegment(task.chapterTitle || 'Chapter_1');
   const ext = task.format === 'cbz' ? 'cbz' : (task.format === 'zip' ? 'zip' : 'pdf');
 
   if (task.format === 'cbz' || task.format === 'zip') {
@@ -209,10 +209,10 @@ async function executeDownloadTask(task, settings) {
       filename: targetPath
     });
   } else {
-    // Individual folder downloads
+    // Individual page image downloads - saved directly into the manga folder
     for (const img of downloadedImages) {
       const pageNum = String(img.index).padStart(3, '0');
-      const targetPath = `Koda_Manga/${cleanManga}/${cleanChap}/page_${pageNum}.${img.extension}`;
+      const targetPath = `Koda_Manga/${cleanManga}/${cleanChap}_page_${pageNum}.${img.extension}`;
       
       const blob = new Blob([img.bytes]);
       const arrayBuffer = await blob.arrayBuffer();
@@ -325,6 +325,16 @@ function triggerChromeDownload(options) {
       }
     });
   });
+}
+
+function cleanMangaTitle(rawTitle) {
+  if (!rawTitle) return 'Manga';
+  return rawTitle
+    .replace(/\s*[\-\|–—]\s*(Read Online|MangaDex|Manganato|AquaManga|Asura\s*Scans|Flame\s*Comics|Read Manga|All Chapters|Manga|Free).*$/gi, '')
+    .replace(/\s*[\-\|–—]?\s*(Chapter|Ch\.|Chap\.|Ch)\s*\d+(\.\d+)?.*$/gi, '')
+    .replace(/\s*[\-\|–—]?\s*c\d+(\.\d+)?.*$/gi, '')
+    .replace(/\s*[\-\|–—]\s*\d+(\.\d+)?\s*$/g, '')
+    .trim() || 'Manga';
 }
 
 function sanitizePathSegment(name) {

@@ -272,9 +272,9 @@ async function executeDownloadTask(task, settings) {
   // Set status to packaging
   await updateTaskStatus(task.id, 'packaging');
 
-  // Generate target filename
-  const cleanManga = sanitizePathSegment(task.mangaTitle);
-  const cleanChap = sanitizePathSegment(task.chapterTitle);
+  // Generate target filename and clean manga folder path (no chapter numbers in folder name)
+  const cleanManga = sanitizePathSegment(cleanMangaTitle(task.mangaTitle));
+  const cleanChap = sanitizePathSegment(task.chapterTitle || 'Chapter_1');
   const ext = task.format === 'cbz' ? 'cbz' : (task.format === 'zip' ? 'zip' : 'pdf');
 
   if (task.format === 'cbz' || task.format === 'zip') {
@@ -310,7 +310,7 @@ async function executeDownloadTask(task, settings) {
   } else {
     for (const img of downloadedImages) {
       const pageNum = String(img.index).padStart(3, '0');
-      const targetPath = \`Koda_Manga/\${cleanManga}/\${cleanChap}/page_\${pageNum}.\${img.extension}\`;
+      const targetPath = \`Koda_Manga/\${cleanManga}/\${cleanChap}_page_\${pageNum}.\${img.extension}\`;
       
       const blob = new Blob([img.bytes]);
       const arrayBuffer = await blob.arrayBuffer();
@@ -420,6 +420,16 @@ function triggerChromeDownload(options) {
   });
 }
 
+function cleanMangaTitle(rawTitle) {
+  if (!rawTitle) return 'Manga';
+  return rawTitle
+    .replace(/\s*[\-\|–—]\s*(Read Online|MangaDex|Manganato|AquaManga|Asura\s*Scans|Flame\s*Comics|Read Manga|All Chapters|Manga|Free).*$/gi, '')
+    .replace(/\s*[\-\|–—]?\s*(Chapter|Ch\.|Chap\.|Ch)\s*\d+(\.\d+)?.*$/gi, '')
+    .replace(/\s*[\-\|–—]?\s*c\d+(\.\d+)?.*$/gi, '')
+    .replace(/\s*[\-\|–—]\s*\d+(\.\d+)?\s*$/g, '')
+    .trim() || 'Manga';
+}
+
 function sanitizePathSegment(name) {
   return (name || 'Untitled')
     .replace(/[\\\\/:*?"<>|]/g, '-')
@@ -477,6 +487,97 @@ async function cancelTask(taskId) {
  */
 
 window.KodaAdapters = {
+  // Helper to parse clean manga title & automatically detect chapter number/title
+  parseMangaAndChapterInfo: (rawTitle, pageUrl) => {
+    let title = (rawTitle || '').replace(/\s+/g, ' ').trim();
+    let chapterNum = 1;
+
+    // 1. URL Chapter Regex Detection
+    const urlMatches = [
+      /chapter[-_/\s]*(\d+(\.\d+)?)/i,
+      /ch[-_/\s]*(\d+(\.\d+)?)/i,
+      /c[-_/\s]*(\d+(\.\d+)?)/i,
+      /chap[-_/\s]*(\d+(\.\d+)?)/i,
+      /\/(\d+(\.\d+)?)\/?$/
+    ];
+
+    let detectedFromUrl = null;
+    if (pageUrl) {
+      for (const reg of urlMatches) {
+        const match = pageUrl.match(reg);
+        if (match && match[1]) {
+          detectedFromUrl = parseFloat(match[1]);
+          break;
+        }
+      }
+    }
+
+    // 2. Title Chapter Regex Detection
+    const titleMatches = [
+      /chapter\s*(\d+(\.\d+)?)/i,
+      /ch\.\s*(\d+(\.\d+)?)/i,
+      /ch\s*(\d+(\.\d+)?)/i,
+      /chap\.\s*(\d+(\.\d+)?)/i,
+      /chap\s*(\d+(\.\d+)?)/i,
+      /episode\s*(\d+(\.\d+)?)/i
+    ];
+
+    let detectedFromTitle = null;
+    for (const reg of titleMatches) {
+      const match = title.match(reg);
+      if (match && match[1]) {
+        detectedFromTitle = parseFloat(match[1]);
+        break;
+      }
+    }
+
+    // 3. DOM Chapter Selectors Detection
+    let detectedFromDom = null;
+    if (typeof document !== 'undefined') {
+      const chapterSelect = document.querySelector('select[name*="chapter"], select#chapter-select, select.single-chapter-select, .chapter-select');
+      if (chapterSelect) {
+        const selectedOpt = chapterSelect.options[chapterSelect.selectedIndex];
+        const textToMatch = selectedOpt ? selectedOpt.text : chapterSelect.value;
+        const match = textToMatch ? textToMatch.match(/(\d+(\.\d+)?)/) : null;
+        if (match) detectedFromDom = parseFloat(match[1]);
+      }
+
+      if (!detectedFromDom) {
+        const chapterHeading = document.querySelector('.current-chapter, #chapter-heading, h1.entry-title, .chap-title, .breadcrumb li.active');
+        if (chapterHeading) {
+          const match = chapterHeading.textContent.match(/chapter\s*(\d+(\.\d+)?)/i) || chapterHeading.textContent.match(/(\d+(\.\d+)?)/);
+          if (match) detectedFromDom = parseFloat(match[1]);
+        }
+      }
+    }
+
+    chapterNum = detectedFromTitle || detectedFromUrl || detectedFromDom || 1;
+    const chapterTitle = \`Chapter \${chapterNum}\`;
+
+    // 4. Clean Manga Title: Strip site branding and chapter strings so all chapters go into the same clean folder name
+    let cleanedManga = title;
+
+    // Remove site branding
+    cleanedManga = cleanedManga.replace(/\s*[\-\|–—]\s*(Read Online|MangaDex|Manganato|AquaManga|Asura\s*Scans|Flame\s*Comics|Read Manga|All Chapters|Manga|Free).*$/gi, '');
+
+    // Remove chapter suffix/infix from manga title
+    cleanedManga = cleanedManga
+      .replace(/\s*[\-\|–—]?\s*(Chapter|Ch\.|Chap\.|Ch)\s*\d+(\.\d+)?.*$/gi, '')
+      .replace(/\s*[\-\|–—]?\s*c\d+(\.\d+)?.*$/gi, '')
+      .replace(/\s*[\-\|–—]\s*\d+(\.\d+)?\s*$/g, '')
+      .trim();
+
+    if (!cleanedManga) {
+      cleanedManga = 'Manga';
+    }
+
+    return {
+      mangaTitle: cleanedManga,
+      chapterTitle: chapterTitle,
+      chapterNum: chapterNum
+    };
+  },
+
   extractImageUrl: (img) => {
     if (!img) return null;
     const candidate = img.getAttribute('data-src') ||
@@ -699,17 +800,16 @@ if (typeof module !== 'undefined') {
       const details = adapter.getMangaDetails();
       const images = adapter.getChapterImages(request.customSelector);
 
-      const chapMatch = window.location.href.match(/chapter[-_]?(\\d+(\\.\\d+)?)/i) ||
-                        document.title.match(/chapter\\s*(\\d+(\\.\\d+)?)/i) ||
-                        window.location.href.match(/ch[-_]?(\\d+(\\.\\d+)?)/i);
-
-      const chapterNum = chapMatch ? parseFloat(chapMatch[1]) : 1;
+      const parsed = window.KodaAdapters.parseMangaAndChapterInfo(
+        details.title || document.title,
+        window.location.href
+      );
 
       sendResponse({
         success: true,
-        mangaTitle: details.title,
-        chapterTitle: \`Chapter \${chapterNum}\`,
-        chapterNum: chapterNum,
+        mangaTitle: parsed.mangaTitle,
+        chapterTitle: parsed.chapterTitle,
+        chapterNum: parsed.chapterNum,
         images: images,
         pageUrl: window.location.href
       });

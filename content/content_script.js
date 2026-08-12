@@ -55,18 +55,17 @@
       const details = adapter.getMangaDetails();
       const images = adapter.getChapterImages(request.customSelector);
 
-      // Extract chapter number from URL or document title
-      const chapMatch = window.location.href.match(/chapter[-_]?(\d+(\.\d+)?)/i) ||
-                        document.title.match(/chapter\s*(\d+(\.\d+)?)/i) ||
-                        window.location.href.match(/ch[-_]?(\d+(\.\d+)?)/i);
-
-      const chapterNum = chapMatch ? parseFloat(chapMatch[1]) : 1;
+      // Automatically parse clean manga title & detect chapter number/title
+      const parsed = window.KodaAdapters.parseMangaAndChapterInfo(
+        details.title || document.title,
+        window.location.href
+      );
 
       sendResponse({
         success: true,
-        mangaTitle: details.title,
-        chapterTitle: `Chapter ${chapterNum}`,
-        chapterNum: chapterNum,
+        mangaTitle: parsed.mangaTitle,
+        chapterTitle: parsed.chapterTitle,
+        chapterNum: parsed.chapterNum,
         images: images,
         pageUrl: window.location.href
       });

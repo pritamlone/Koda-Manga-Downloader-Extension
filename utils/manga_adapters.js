@@ -5,6 +5,97 @@
  */
 
 window.KodaAdapters = {
+  // Helper to parse clean manga title & automatically detect chapter number/title
+  parseMangaAndChapterInfo: (rawTitle, pageUrl) => {
+    let title = (rawTitle || '').replace(/\s+/g, ' ').trim();
+    let chapterNum = 1;
+
+    // 1. URL Chapter Regex Detection
+    const urlMatches = [
+      /chapter[-_/\s]*(\d+(\.\d+)?)/i,
+      /ch[-_/\s]*(\d+(\.\d+)?)/i,
+      /c[-_/\s]*(\d+(\.\d+)?)/i,
+      /chap[-_/\s]*(\d+(\.\d+)?)/i,
+      /\/(\d+(\.\d+)?)\/?$/
+    ];
+
+    let detectedFromUrl = null;
+    if (pageUrl) {
+      for (const reg of urlMatches) {
+        const match = pageUrl.match(reg);
+        if (match && match[1]) {
+          detectedFromUrl = parseFloat(match[1]);
+          break;
+        }
+      }
+    }
+
+    // 2. Title Chapter Regex Detection
+    const titleMatches = [
+      /chapter\s*(\d+(\.\d+)?)/i,
+      /ch\.\s*(\d+(\.\d+)?)/i,
+      /ch\s*(\d+(\.\d+)?)/i,
+      /chap\.\s*(\d+(\.\d+)?)/i,
+      /chap\s*(\d+(\.\d+)?)/i,
+      /episode\s*(\d+(\.\d+)?)/i
+    ];
+
+    let detectedFromTitle = null;
+    for (const reg of titleMatches) {
+      const match = title.match(reg);
+      if (match && match[1]) {
+        detectedFromTitle = parseFloat(match[1]);
+        break;
+      }
+    }
+
+    // 3. DOM Chapter Selectors Detection
+    let detectedFromDom = null;
+    if (typeof document !== 'undefined') {
+      const chapterSelect = document.querySelector('select[name*="chapter"], select#chapter-select, select.single-chapter-select, .chapter-select');
+      if (chapterSelect) {
+        const selectedOpt = chapterSelect.options[chapterSelect.selectedIndex];
+        const textToMatch = selectedOpt ? selectedOpt.text : chapterSelect.value;
+        const match = textToMatch ? textToMatch.match(/(\d+(\.\d+)?)/) : null;
+        if (match) detectedFromDom = parseFloat(match[1]);
+      }
+
+      if (!detectedFromDom) {
+        const chapterHeading = document.querySelector('.current-chapter, #chapter-heading, h1.entry-title, .chap-title, .breadcrumb li.active');
+        if (chapterHeading) {
+          const match = chapterHeading.textContent.match(/chapter\s*(\d+(\.\d+)?)/i) || chapterHeading.textContent.match(/(\d+(\.\d+)?)/);
+          if (match) detectedFromDom = parseFloat(match[1]);
+        }
+      }
+    }
+
+    chapterNum = detectedFromTitle || detectedFromUrl || detectedFromDom || 1;
+    const chapterTitle = `Chapter ${chapterNum}`;
+
+    // 4. Clean Manga Title: Strip site branding and chapter strings so all chapters go into the same clean folder name
+    let cleanedManga = title;
+
+    // Remove site branding
+    cleanedManga = cleanedManga.replace(/\s*[\-\|–—]\s*(Read Online|MangaDex|Manganato|AquaManga|Asura\s*Scans|Flame\s*Comics|Read Manga|All Chapters|Manga|Free).*$/gi, '');
+
+    // Remove chapter suffix/infix from manga title
+    cleanedManga = cleanedManga
+      .replace(/\s*[\-\|–—]?\s*(Chapter|Ch\.|Chap\.|Ch)\s*\d+(\.\d+)?.*$/gi, '')
+      .replace(/\s*[\-\|–—]?\s*c\d+(\.\d+)?.*$/gi, '')
+      .replace(/\s*[\-\|–—]\s*\d+(\.\d+)?\s*$/g, '')
+      .trim();
+
+    if (!cleanedManga) {
+      cleanedManga = 'Manga';
+    }
+
+    return {
+      mangaTitle: cleanedManga,
+      chapterTitle: chapterTitle,
+      chapterNum: chapterNum
+    };
+  },
+
   // Helper to safely extract full image URL from lazy-loaded elements
   extractImageUrl: (img) => {
     if (!img) return null;
