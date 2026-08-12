@@ -1,11 +1,45 @@
-<div align="center">
+# Koda Manga Downloader Extension
 
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+Koda is a Chrome Manifest V3 extension and interactive management studio designed for downloading and archiving manga chapters seamlessly into CBZ, PDF, standard ZIP, or JPEG/WebP image packages.
 
-  <h1>Built with AI Studio</h2>
+## Features
 
-  <p>The fastest path from prompt to production with Gemini.</p>
+- **Manifest V3 Compliant Architecture**: Service worker background pipeline with offscreen document processing.
+- **Multi-Format Export**: Convert and package chapter downloads into `.cbz` (Comic Book Zip), `.pdf`, or standard `.zip` formats.
+- **Throttled Concurrency & Queue Engine**: Prevents HTTP 429 rate limits by queueing and batch-downloading images with configurable delays.
+- **Site Adapters**: Pre-configured scrapers and custom DOM CSS selector fallbacks for manga reading platforms.
+- **Chrome Storage Sync**: Retains task queue and download state across sessions.
 
-  <a href="https://aistudio.google.com/apps">Start building</a>
+## Project Structure
 
-</div>
+```
+├── src/
+│   ├── components/       # Studio dashboard components (Header, CodeExplorer, AuditPanel, ExtensionSimulator, FullOutputView)
+│   ├── data/             # Extension codebase files and audit data
+│   ├── utils/            # ZIP exporter and helper utilities
+│   ├── types/            # TypeScript interfaces and definitions
+│   └── App.tsx           # Main application entry
+├── index.html
+└── package.json
+```
+
+## Getting Started
+
+1. Install dependencies:
+   ```bash
+   npm install
+   ```
+
+2. Start the local development server:
+   ```bash
+   npm run dev
+   ```
+
+3. Build for production:
+   ```bash
+   npm run build
+   ```
+
+## License
+
+MIT

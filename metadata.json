@@ -1,0 +1,6 @@
+{
+  "name": "Koda Manga Downloader Extension",
+  "description": "A comprehensive Chrome Manifest V3 extension and interactive builder studio for downloading manga chapters into CBZ, ZIP, PDF, or image files.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
