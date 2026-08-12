@@ -72,18 +72,27 @@ window.KodaAdapters = {
     chapterNum = detectedFromTitle || detectedFromUrl || detectedFromDom || 1;
     const chapterTitle = `Chapter ${chapterNum}`;
 
-    // 4. Clean Manga Title: Strip site branding and chapter strings so all chapters go into the same clean folder name
+    // 4. Clean Manga Title: Strip site branding, chapter/episode strings, and repeated titles so all chapters go into the exact same clean folder name
     let cleanedManga = title;
 
     // Remove site branding
-    cleanedManga = cleanedManga.replace(/\s*[\-\|–—]\s*(Read Online|MangaDex|Manganato|AquaManga|Asura\s*Scans|Flame\s*Comics|Read Manga|All Chapters|Manga|Free).*$/gi, '');
+    cleanedManga = cleanedManga.replace(/\s*[\-\|–—>:>]?\s*(Read Online|MangaDex|Manganato|AquaManga|Asura\s*Scans|Flame\s*Comics|Read Manga|All Chapters|WEBTOON|Webtoons|Manga|Free).*$/gi, '');
 
-    // Remove chapter suffix/infix from manga title
+    // Remove Episode / Chapter / Vol / Season prefixes and all trailing text
     cleanedManga = cleanedManga
-      .replace(/\s*[\-\|–—]?\s*(Chapter|Ch\.|Chap\.|Ch)\s*\d+(\.\d+)?.*$/gi, '')
+      .replace(/\s*[\-\|–—>:>]?\s*(Chapter|Ch\.|Chap\.|Ch|Episode|Ep\.|Ep|Vol\.|Volume|Vol|Season|S\d+|#)\s*\d+.*$/gi, '')
       .replace(/\s*[\-\|–—]?\s*c\d+(\.\d+)?.*$/gi, '')
       .replace(/\s*[\-\|–—]\s*\d+(\.\d+)?\s*$/g, '')
       .trim();
+
+    // Remove duplicated title phrase repeats e.g. "Magic Emperor - Magic Emperor" -> "Magic Emperor"
+    const titleParts = cleanedManga.split(/\s*[\-\|–—]\s*/);
+    if (titleParts.length > 1 && titleParts[0].toLowerCase().trim() === titleParts[1].toLowerCase().trim()) {
+      cleanedManga = titleParts[0].trim();
+    }
+
+    // Clean trailing non-word noise characters like trailing dashes or spaces
+    cleanedManga = cleanedManga.replace(/[\s\-\|–—_:]+$/, '').trim();
 
     if (!cleanedManga) {
       cleanedManga = 'Manga';
