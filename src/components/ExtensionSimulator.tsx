@@ -10,7 +10,7 @@ export const ExtensionSimulator: React.FC = () => {
   const [exportFormat, setExportFormat] = useState<'cbz' | 'zip' | 'pdf' | 'folder'>('cbz');
   const [detectedImages, setDetectedImages] = useState<string[]>([]);
   const [tasks, setTasks] = useState<DownloadTask[]>([]);
-  const [themeMode, setThemeMode] = useState<'light' | 'dark' | 'auto'>('light');
+  const [themeMode, setThemeMode] = useState<'light' | 'dark' | 'auto'>('auto');
   const [isSystemDark, setIsSystemDark] = useState<boolean>(() => {
     return typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
   });
@@ -18,12 +18,20 @@ export const ExtensionSimulator: React.FC = () => {
   useEffect(() => {
     if (typeof window === 'undefined' || !window.matchMedia) return;
     const media = window.matchMedia('(prefers-color-scheme: dark)');
+    setIsSystemDark(media.matches);
+
     const listener = (e: MediaQueryListEvent) => setIsSystemDark(e.matches);
-    media.addEventListener('change', listener);
-    return () => media.removeEventListener('change', listener);
+    if (media.addEventListener) {
+      media.addEventListener('change', listener);
+      return () => media.removeEventListener('change', listener);
+    } else if ((media as any).addListener) {
+      (media as any).addListener(listener);
+      return () => (media as any).removeListener(listener);
+    }
   }, []);
 
-  const isDarkActive = themeMode === 'dark' || (themeMode === 'auto' && isSystemDark);
+  const liveSystemDark = typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)').matches : isSystemDark;
+  const isDarkActive = themeMode === 'dark' || (themeMode === 'auto' && liveSystemDark);
   const [settings, setSettings] = useState<ExtensionSettings>({
     defaultFormat: 'cbz',
     maxConcurrentDownloads: 3,
@@ -181,7 +189,7 @@ export const ExtensionSimulator: React.FC = () => {
                         ? 'Theme: Light Mode (Click for Dark)'
                         : themeMode === 'dark'
                         ? 'Theme: Dark Mode (Click for Auto System)'
-                        : 'Theme: Auto System (Click for Light)'
+                        : `Theme: Auto System [${liveSystemDark ? 'Dark' : 'Light'}] (Click for Light)`
                     }
                     aria-label="Toggle Theme"
                   >

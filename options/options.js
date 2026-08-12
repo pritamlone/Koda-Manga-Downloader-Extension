@@ -30,10 +30,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 });
 
+function getSystemIsDark() {
+  return typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+}
+
 async function initTheme() {
   const toggleBtn = document.getElementById('btn-theme-toggle');
 
-  let savedTheme = 'light';
+  let savedTheme = 'auto';
   try {
     const res = await new Promise(resolve => {
       if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
@@ -43,25 +47,32 @@ async function initTheme() {
       }
     });
     savedTheme = (res && (res.theme || (res.settings && res.settings.theme))) || 
-                 localStorage.getItem('koda_theme') || 'light';
+                 localStorage.getItem('koda_theme') || 'auto';
   } catch (e) {
-    savedTheme = localStorage.getItem('koda_theme') || 'light';
+    savedTheme = localStorage.getItem('koda_theme') || 'auto';
   }
 
   window.kodaThemeMode = savedTheme;
   applyTheme(savedTheme);
 
   if (window.matchMedia) {
-    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    const handleSystemChange = () => {
       if (window.kodaThemeMode === 'auto') {
         applyTheme('auto');
       }
-    });
+    };
+
+    if (media.addEventListener) {
+      media.addEventListener('change', handleSystemChange);
+    } else if (media.addListener) {
+      media.addListener(handleSystemChange);
+    }
   }
 
   if (toggleBtn) {
     toggleBtn.addEventListener('click', () => {
-      const mode = window.kodaThemeMode || 'light';
+      const mode = window.kodaThemeMode || 'auto';
       let nextMode = 'light';
       if (mode === 'light') nextMode = 'dark';
       else if (mode === 'dark') nextMode = 'auto';
@@ -85,8 +96,7 @@ function applyTheme(mode) {
 
   let effectiveTheme = mode;
   if (mode === 'auto') {
-    const isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-    effectiveTheme = isDark ? 'dark' : 'light';
+    effectiveTheme = getSystemIsDark() ? 'dark' : 'light';
   }
 
   document.documentElement.setAttribute('data-theme', effectiveTheme);
@@ -106,8 +116,9 @@ function applyTheme(mode) {
       toggleBtn.textContent = '🌙';
       toggleBtn.title = 'Theme: Dark Mode (Click for Auto System)';
     } else {
+      const systemStateText = getSystemIsDark() ? 'Dark' : 'Light';
       toggleBtn.textContent = '💻';
-      toggleBtn.title = 'Theme: Auto System (Click for Light)';
+      toggleBtn.title = `Theme: Auto System [${systemStateText}] (Click for Light)`;
     }
   }
 }
