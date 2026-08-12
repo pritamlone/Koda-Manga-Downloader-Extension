@@ -58,7 +58,7 @@ export const CodeExplorer: React.FC = () => {
 
           {/* Category Filter Pills */}
           <div className="flex flex-wrap gap-1.5 mb-5">
-            {['all', 'manifest', 'background', 'popup', 'content', 'options', 'utils'].map((cat) => (
+            {['all', 'manifest', 'background', 'popup', 'content', 'options', 'utils', 'icons'].map((cat) => (
               <button
                 key={cat}
                 onClick={() => setActiveCategory(cat)}
@@ -127,9 +127,28 @@ export const CodeExplorer: React.FC = () => {
 
           {/* Code Viewer Body */}
           <div className="flex-1 p-6 overflow-auto bg-[#121212] font-mono text-xs leading-relaxed text-[#F9F9F7] custom-scrollbar">
-            <pre>
-              <code>{selectedFile.content}</code>
-            </pre>
+            {selectedFile.isBase64 ? (
+              <div className="flex flex-col items-center justify-center p-8 border-2 border-dashed border-[#FF4D00]/50 bg-black/40 rounded-xl space-y-4 text-center">
+                <div className="p-4 bg-[#FF4D00]/10 border border-[#FF4D00] rounded-xl flex items-center justify-center">
+                  <img
+                    src={`data:image/png;base64,${selectedFile.content}`}
+                    alt={selectedFile.path}
+                    className="w-16 h-16 object-contain image-rendering-pixelated shadow-lg"
+                  />
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-white uppercase tracking-wider font-mono">{selectedFile.path}</p>
+                  <p className="text-xs text-[#F9F9F7]/60 mt-1">Binary PNG Image File (Base64 Encoded)</p>
+                </div>
+                <div className="max-w-md bg-black/60 p-3 rounded border border-white/10 text-[10px] text-gray-400 break-all text-left max-h-32 overflow-y-auto font-mono">
+                  data:image/png;base64,{selectedFile.content}
+                </div>
+              </div>
+            ) : (
+              <pre>
+                <code>{selectedFile.content}</code>
+              </pre>
+            )}
           </div>
         </div>
       </div>

@@ -1,5 +1,36 @@
 import { ExtensionFile } from '../types/extension';
 
+function generateIconBase64(size: number): string {
+  try {
+    if (typeof document !== 'undefined') {
+      const canvas = document.createElement('canvas');
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        // Orange background
+        ctx.fillStyle = '#FF4D00';
+        ctx.fillRect(0, 0, size, size);
+
+        // Dark K logo letter
+        ctx.fillStyle = '#121212';
+        ctx.font = `bold ${Math.round(size * 0.65)}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('K', size / 2, size / 2 + size * 0.05);
+        
+        const dataUrl = canvas.toDataURL('image/png');
+        if (dataUrl && dataUrl.startsWith('data:image/png;base64,')) {
+          return dataUrl.replace(/^data:image\/png;base64,/, '');
+        }
+      }
+    }
+  } catch (e) {
+    // Fallback if canvas is unavailable
+  }
+  return 'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAAUSURBVDhPY/z//z8DJYCJgUQw3DAAaw4B/5/SjO4AAAAASUVORK5CYII=';
+}
+
 export const EXTENSION_FILES: ExtensionFile[] = [
   {
     path: 'manifest.json',
@@ -1472,5 +1503,26 @@ A high-speed, battle-tested Chrome Extension for downloading manga chapters into
 5. Click **Load Unpacked** and select the unpacked extension folder.
 6. The Koda Manga Downloader icon will appear in your extensions toolbar!
 `
+  },
+  {
+    path: 'icons/icon16.png',
+    category: 'icons',
+    description: '16x16 toolbar icon PNG file',
+    content: generateIconBase64(16),
+    isBase64: true
+  },
+  {
+    path: 'icons/icon48.png',
+    category: 'icons',
+    description: '48x48 extension management icon PNG file',
+    content: generateIconBase64(48),
+    isBase64: true
+  },
+  {
+    path: 'icons/icon128.png',
+    category: 'icons',
+    description: '128x128 Chrome Web Store icon PNG file',
+    content: generateIconBase64(128),
+    isBase64: true
   }
 ];

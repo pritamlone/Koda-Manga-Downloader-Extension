@@ -7,6 +7,9 @@ export const FullOutputView: React.FC = () => {
   const [copiedAll, setCopiedAll] = useState<boolean>(false);
 
   const fullTextOutput = EXTENSION_FILES.map(file => {
+    if (file.isBase64) {
+      return `// File: ${file.path}\n// [Binary PNG Icon File - Included in Export Zip Archive]\n// Data: data:image/png;base64,${file.content}\n`;
+    }
     return `// File: ${file.path}\n${file.content}\n`;
   }).join('\n' + '='.repeat(60) + '\n\n');
 

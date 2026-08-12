@@ -5,7 +5,11 @@ export async function exportExtensionAsZip(): Promise<void> {
   const zip = new JSZip();
 
   EXTENSION_FILES.forEach(file => {
-    zip.file(file.path, file.content);
+    if (file.isBase64) {
+      zip.file(file.path, file.content, { base64: true });
+    } else {
+      zip.file(file.path, file.content);
+    }
   });
 
   const content = await zip.generateAsync({ type: 'blob' });

@@ -1,8 +1,9 @@
 export interface ExtensionFile {
   path: string;
-  category: 'manifest' | 'background' | 'popup' | 'content' | 'options' | 'utils' | 'lib' | 'docs';
+  category: 'manifest' | 'background' | 'popup' | 'content' | 'options' | 'utils' | 'lib' | 'docs' | 'icons';
   description: string;
   content: string;
+  isBase64?: boolean;
 }
 
 export interface AuditIssue {
