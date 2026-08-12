@@ -10,6 +10,20 @@ export const ExtensionSimulator: React.FC = () => {
   const [exportFormat, setExportFormat] = useState<'cbz' | 'zip' | 'pdf' | 'folder'>('cbz');
   const [detectedImages, setDetectedImages] = useState<string[]>([]);
   const [tasks, setTasks] = useState<DownloadTask[]>([]);
+  const [themeMode, setThemeMode] = useState<'light' | 'dark' | 'auto'>('light');
+  const [isSystemDark, setIsSystemDark] = useState<boolean>(() => {
+    return typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  });
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    const listener = (e: MediaQueryListEvent) => setIsSystemDark(e.matches);
+    media.addEventListener('change', listener);
+    return () => media.removeEventListener('change', listener);
+  }, []);
+
+  const isDarkActive = themeMode === 'dark' || (themeMode === 'auto' && isSystemDark);
   const [settings, setSettings] = useState<ExtensionSettings>({
     defaultFormat: 'cbz',
     maxConcurrentDownloads: 3,
@@ -118,58 +132,117 @@ export const ExtensionSimulator: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
           {/* Extension Popup Frame Mockup */}
           <div className="md:col-span-5 flex justify-center">
-            <div className="w-[380px] bg-[#F9F9F7] border-4 border-[#121212] p-6 shadow-[8px_8px_0px_0px_#121212] space-y-5">
+            <div className={`w-[380px] border-4 p-6 transition-colors duration-200 space-y-5 ${
+              isDarkActive 
+                ? 'bg-[#0F172A] text-[#F1F5F9] border-[#334155] shadow-[8px_8px_0px_0px_#020617]' 
+                : 'bg-[#F9F9F7] text-[#121212] border-[#121212] shadow-[8px_8px_0px_0px_#121212]'
+            }`}>
               {/* Header */}
-              <div className="flex items-center justify-between pb-4 border-b-2 border-[#121212]">
+              <div className={`flex items-center justify-between pb-4 border-b-2 ${
+                isDarkActive ? 'border-[#334155]' : 'border-[#121212]'
+              }`}>
                 <div className="flex items-center space-x-3">
-                  <div className="w-8 h-8 bg-[#121212] text-white flex items-center justify-center font-black text-sm">
-                    K
+                  <div className="w-8 h-8 bg-[#FF4D00] text-white flex items-center justify-center font-black text-sm border-2 border-current shadow-[2px_2px_0px_0px_rgba(0,0,0,0.3)]">
+                    📖
                   </div>
                   <div>
-                    <h3 className="text-lg font-black italic uppercase tracking-tighter text-[#121212] leading-none">Koda Manga</h3>
+                    <h3 className={`text-lg font-black italic uppercase tracking-tighter leading-none ${
+                      isDarkActive ? 'text-[#F1F5F9]' : 'text-[#121212]'
+                    }`}>Koda Manga</h3>
                     <span className="text-[10px] text-[#FF4D00] font-bold uppercase tracking-widest">Engine V3.0</span>
                   </div>
                 </div>
-                <div className="w-7 h-7 bg-[#121212] text-white flex items-center justify-center text-xs font-bold border border-[#121212]">
-                  ⚙
+
+                <div className="flex items-center space-x-1.5">
+                  <button
+                    onClick={() => setThemeMode(prev => {
+                      if (prev === 'light') return 'dark';
+                      if (prev === 'dark') return 'auto';
+                      return 'light';
+                    })}
+                    className={`w-7 h-7 flex items-center justify-center text-xs font-bold border transition-all cursor-pointer ${
+                      isDarkActive
+                        ? 'bg-[#1E293B] text-[#F1F5F9] border-[#334155] hover:bg-[#334155] shadow-[2px_2px_0px_0px_#020617]'
+                        : 'bg-white text-[#121212] border-[#121212] hover:bg-[#F9F9F7] shadow-[2px_2px_0px_0px_#121212]'
+                    }`}
+                    title={
+                      themeMode === 'light'
+                        ? 'Theme: Light Mode (Click for Dark)'
+                        : themeMode === 'dark'
+                        ? 'Theme: Dark Mode (Click for Auto System)'
+                        : 'Theme: Auto System (Click for Light)'
+                    }
+                    aria-label="Toggle Theme"
+                  >
+                    {themeMode === 'light' ? '☀️' : themeMode === 'dark' ? '🌙' : '💻'}
+                  </button>
+                  <div className={`w-7 h-7 flex items-center justify-center text-xs font-bold border ${
+                    isDarkActive
+                      ? 'bg-[#1E293B] text-[#F1F5F9] border-[#334155] shadow-[2px_2px_0px_0px_#020617]'
+                      : 'bg-white text-[#121212] border-[#121212] shadow-[2px_2px_0px_0px_#121212]'
+                  }`}>
+                    ⚙
+                  </div>
                 </div>
               </div>
 
               {/* Popup Main Form */}
-              <div className="space-y-4 bg-white p-4 border-2 border-[#121212]">
+              <div className={`space-y-4 p-4 border-2 ${
+                isDarkActive
+                  ? 'bg-[#1E293B] border-[#334155] shadow-[3px_3px_0px_0px_#020617]'
+                  : 'bg-white border-[#121212] shadow-[3px_3px_0px_0px_#121212]'
+              }`}>
                 <div>
-                  <label className="text-[10px] font-black uppercase text-[#121212] block mb-1">
+                  <label className={`text-[10px] font-black uppercase block mb-1 ${
+                    isDarkActive ? 'text-[#F1F5F9]' : 'text-[#121212]'
+                  }`}>
                     Manga Title
                   </label>
                   <input
                     type="text"
                     value={mangaTitle}
                     onChange={(e) => setMangaTitle(e.target.value)}
-                    className="w-full bg-[#F9F9F7] border border-[#121212] px-3 py-2 text-xs font-bold text-[#121212] focus:outline-none focus:ring-1 focus:ring-[#FF4D00]"
+                    className={`w-full border px-3 py-2 text-xs font-bold focus:outline-none focus:ring-1 focus:ring-[#FF4D00] ${
+                      isDarkActive
+                        ? 'bg-[#0F172A] border-[#334155] text-[#F1F5F9]'
+                        : 'bg-[#F9F9F7] border-[#121212] text-[#121212]'
+                    }`}
                   />
                 </div>
 
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="text-[10px] font-black uppercase text-[#121212] block mb-1">
+                    <label className={`text-[10px] font-black uppercase block mb-1 ${
+                      isDarkActive ? 'text-[#F1F5F9]' : 'text-[#121212]'
+                    }`}>
                       Chapter
                     </label>
                     <input
                       type="text"
                       value={chapterTitle}
                       onChange={(e) => setChapterTitle(e.target.value)}
-                      className="w-full bg-[#F9F9F7] border border-[#121212] px-3 py-2 text-xs font-bold text-[#121212] focus:outline-none focus:ring-1 focus:ring-[#FF4D00]"
+                      className={`w-full border px-3 py-2 text-xs font-bold focus:outline-none focus:ring-1 focus:ring-[#FF4D00] ${
+                        isDarkActive
+                          ? 'bg-[#0F172A] border-[#334155] text-[#F1F5F9]'
+                          : 'bg-[#F9F9F7] border-[#121212] text-[#121212]'
+                      }`}
                     />
                   </div>
 
                   <div>
-                    <label className="text-[10px] font-black uppercase text-[#121212] block mb-1">
+                    <label className={`text-[10px] font-black uppercase block mb-1 ${
+                      isDarkActive ? 'text-[#F1F5F9]' : 'text-[#121212]'
+                    }`}>
                       Format
                     </label>
                     <select
                       value={exportFormat}
                       onChange={(e) => setExportFormat(e.target.value as any)}
-                      className="w-full bg-[#F9F9F7] border border-[#121212] px-2 py-2 text-xs font-bold text-[#121212] focus:outline-none focus:ring-1 focus:ring-[#FF4D00]"
+                      className={`w-full border px-2 py-2 text-xs font-bold focus:outline-none focus:ring-1 focus:ring-[#FF4D00] ${
+                        isDarkActive
+                          ? 'bg-[#0F172A] border-[#334155] text-[#F1F5F9]'
+                          : 'bg-[#F9F9F7] border-[#121212] text-[#121212]'
+                      }`}
                     >
                       <option value="cbz">CBZ (Comic Zip)</option>
                       <option value="zip">Standard ZIP</option>
@@ -180,12 +253,16 @@ export const ExtensionSimulator: React.FC = () => {
                 </div>
 
                 <div className="flex items-center justify-between pt-1">
-                  <span className="px-2 py-0.5 bg-[#FF4D00] text-white text-[10px] font-black uppercase tracking-widest border border-[#121212]">
+                  <span className={`px-2 py-0.5 bg-[#FF4D00] text-white text-[10px] font-black uppercase tracking-widest border ${
+                    isDarkActive ? 'border-[#334155]' : 'border-[#121212]'
+                  }`}>
                     {detectedImages.length} Pages Found
                   </span>
                   <button
                     onClick={() => generateMockImages(selectedPresetSite)}
-                    className="text-[10px] font-black uppercase text-[#121212] hover:text-[#FF4D00] flex items-center space-x-1 cursor-pointer"
+                    className={`text-[10px] font-black uppercase hover:text-[#FF4D00] flex items-center space-x-1 cursor-pointer ${
+                      isDarkActive ? 'text-[#F1F5F9]' : 'text-[#121212]'
+                    }`}
                   >
                     <RefreshCw className="w-3 h-3" />
                     <span>Rescan</span>
@@ -194,7 +271,11 @@ export const ExtensionSimulator: React.FC = () => {
 
                 <button
                   onClick={handleTriggerDownload}
-                  className="w-full py-3 bg-[#FF4D00] text-white font-black uppercase tracking-widest text-xs border-2 border-[#121212] hover:bg-[#121212] hover:text-white transition-all flex items-center justify-center space-x-2 cursor-pointer shadow-[2px_2px_0px_0px_#121212]"
+                  className={`w-full py-3 bg-[#FF4D00] text-white font-black uppercase tracking-widest text-xs border-2 hover:bg-[#121212] hover:text-white transition-all flex items-center justify-center space-x-2 cursor-pointer ${
+                    isDarkActive
+                      ? 'border-[#334155] shadow-[2px_2px_0px_0px_#020617]'
+                      : 'border-[#121212] shadow-[2px_2px_0px_0px_#121212]'
+                  }`}
                 >
                   <Download className="w-4 h-4" />
                   <span>Download Chapter Now</span>
@@ -207,7 +288,11 @@ export const ExtensionSimulator: React.FC = () => {
                   Active Tasks
                 </span>
                 {tasks.length === 0 ? (
-                  <div className="bg-white p-4 border border-[#121212] text-center text-xs font-bold text-[#121212]/50 uppercase tracking-widest">
+                  <div className={`p-4 border text-center text-xs font-bold uppercase tracking-widest ${
+                    isDarkActive
+                      ? 'bg-[#1E293B] border-[#334155] text-[#94A3B8]'
+                      : 'bg-white border-[#121212] text-[#121212]/50'
+                  }`}>
                     No active tasks in queue.
                   </div>
                 ) : (
@@ -215,22 +300,32 @@ export const ExtensionSimulator: React.FC = () => {
                     {tasks.map(task => {
                       const percent = Math.round((task.completedPages / task.totalPages) * 100);
                       return (
-                        <div key={task.id} className="bg-white p-3 border-2 border-[#121212] space-y-2">
-                          <div className="flex justify-between text-xs font-black uppercase tracking-tight text-[#121212]">
+                        <div key={task.id} className={`p-3 border-2 space-y-2 ${
+                          isDarkActive
+                            ? 'bg-[#1E293B] border-[#334155] shadow-[2px_2px_0px_0px_#020617]'
+                            : 'bg-white border-[#121212] shadow-[2px_2px_0px_0px_#121212]'
+                        }`}>
+                          <div className={`flex justify-between text-xs font-black uppercase tracking-tight ${
+                            isDarkActive ? 'text-[#F1F5F9]' : 'text-[#121212]'
+                          }`}>
                             <span className="truncate">{task.mangaTitle}</span>
-                            <span className="text-[9px] uppercase text-white font-mono px-1.5 py-0.5 bg-[#121212]">
+                            <span className="text-[9px] uppercase text-white font-mono px-1.5 py-0.5 bg-[#FF4D00]">
                               {task.format}
                             </span>
                           </div>
 
-                          <div className="w-full border-2 border-[#121212] bg-[#F9F9F7] h-4 relative">
+                          <div className={`w-full border-2 h-4 relative ${
+                            isDarkActive ? 'border-[#334155] bg-[#0F172A]' : 'border-[#121212] bg-[#F9F9F7]'
+                          }`}>
                             <div
                               className="bg-[#FF4D00] h-full transition-all duration-300"
                               style={{ width: `${percent}%` }}
                             />
                           </div>
 
-                          <div className="flex justify-between text-[10px] font-mono font-bold text-[#121212]">
+                          <div className={`flex justify-between text-[10px] font-mono font-bold ${
+                            isDarkActive ? 'text-[#94A3B8]' : 'text-[#121212]'
+                          }`}>
                             <span>{task.completedPages} / {task.totalPages} ({percent}%)</span>
                             <span className="uppercase font-black text-[#FF4D00]">
                               {task.status}

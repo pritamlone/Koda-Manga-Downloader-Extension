@@ -2,7 +2,9 @@
  * Koda Manga Downloader Extension - Options Controller
  */
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+  await initTheme();
+
   chrome.storage.local.get(['settings'], (res) => {
     const s = res.settings || {};
     if (s.maxConcurrentDownloads) document.getElementById('opt-concurrency').value = s.maxConcurrentDownloads;
@@ -27,3 +29,85 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 });
+
+async function initTheme() {
+  const toggleBtn = document.getElementById('btn-theme-toggle');
+
+  let savedTheme = 'light';
+  try {
+    const res = await new Promise(resolve => {
+      if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+        chrome.storage.local.get(['theme', 'settings'], resolve);
+      } else {
+        resolve({});
+      }
+    });
+    savedTheme = (res && (res.theme || (res.settings && res.settings.theme))) || 
+                 localStorage.getItem('koda_theme') || 'light';
+  } catch (e) {
+    savedTheme = localStorage.getItem('koda_theme') || 'light';
+  }
+
+  window.kodaThemeMode = savedTheme;
+  applyTheme(savedTheme);
+
+  if (window.matchMedia) {
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+      if (window.kodaThemeMode === 'auto') {
+        applyTheme('auto');
+      }
+    });
+  }
+
+  if (toggleBtn) {
+    toggleBtn.addEventListener('click', () => {
+      const mode = window.kodaThemeMode || 'light';
+      let nextMode = 'light';
+      if (mode === 'light') nextMode = 'dark';
+      else if (mode === 'dark') nextMode = 'auto';
+      else nextMode = 'light';
+
+      window.kodaThemeMode = nextMode;
+      applyTheme(nextMode);
+
+      try {
+        localStorage.setItem('koda_theme', nextMode);
+        if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+          chrome.storage.local.set({ theme: nextMode });
+        }
+      } catch (e) {}
+    });
+  }
+}
+
+function applyTheme(mode) {
+  const toggleBtn = document.getElementById('btn-theme-toggle');
+
+  let effectiveTheme = mode;
+  if (mode === 'auto') {
+    const isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    effectiveTheme = isDark ? 'dark' : 'light';
+  }
+
+  document.documentElement.setAttribute('data-theme', effectiveTheme);
+  document.body.setAttribute('data-theme', effectiveTheme);
+
+  if (effectiveTheme === 'dark') {
+    document.body.classList.add('koda-theme-dark');
+  } else {
+    document.body.classList.remove('koda-theme-dark');
+  }
+
+  if (toggleBtn) {
+    if (mode === 'light') {
+      toggleBtn.textContent = '☀️';
+      toggleBtn.title = 'Theme: Light Mode (Click for Dark)';
+    } else if (mode === 'dark') {
+      toggleBtn.textContent = '🌙';
+      toggleBtn.title = 'Theme: Dark Mode (Click for Auto System)';
+    } else {
+      toggleBtn.textContent = '💻';
+      toggleBtn.title = 'Theme: Auto System (Click for Light)';
+    }
+  }
+}

@@ -840,7 +840,10 @@ if (typeof module !== 'undefined') {
           <p class="koda-subtitle">MANGA CHAPTER DOWNLOADER</p>
         </div>
       </div>
-      <a href="../options/options.html" target="_blank" class="koda-icon-btn" title="Settings">⚙️</a>
+      <div class="koda-header-actions">
+        <button id="btn-theme-toggle" class="koda-icon-btn" title="Toggle Light/Dark Theme" aria-label="Toggle Theme">🌙</button>
+        <a href="../options/options.html" target="_blank" class="koda-icon-btn" title="Settings">⚙️</a>
+      </div>
     </header>
 
     <!-- Navigation Tabs -->
@@ -933,11 +936,94 @@ if (typeof module !== 'undefined') {
 let scrapedData = null;
 
 document.addEventListener('DOMContentLoaded', async () => {
+  await initTheme();
   setupTabs();
   await loadCurrentPageData();
   bindEvents();
   startQueuePolling();
 });
+
+async function initTheme() {
+  const toggleBtn = document.getElementById('btn-theme-toggle');
+
+  let savedTheme = 'light';
+  try {
+    const res = await new Promise(resolve => {
+      if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+        chrome.storage.local.get(['theme', 'settings'], resolve);
+      } else {
+        resolve({});
+      }
+    });
+    savedTheme = (res && (res.theme || (res.settings && res.settings.theme))) || 
+                 localStorage.getItem('koda_theme') || 'light';
+  } catch (e) {
+    savedTheme = localStorage.getItem('koda_theme') || 'light';
+  }
+
+  window.kodaThemeMode = savedTheme;
+  applyTheme(savedTheme);
+
+  if (window.matchMedia) {
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+      if (window.kodaThemeMode === 'auto') {
+        applyTheme('auto');
+      }
+    });
+  }
+
+  if (toggleBtn) {
+    toggleBtn.addEventListener('click', () => {
+      const mode = window.kodaThemeMode || 'light';
+      let nextMode = 'light';
+      if (mode === 'light') nextMode = 'dark';
+      else if (mode === 'dark') nextMode = 'auto';
+      else nextMode = 'light';
+
+      window.kodaThemeMode = nextMode;
+      applyTheme(nextMode);
+
+      try {
+        localStorage.setItem('koda_theme', nextMode);
+        if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+          chrome.storage.local.set({ theme: nextMode });
+        }
+      } catch (e) {}
+    });
+  }
+}
+
+function applyTheme(mode) {
+  const toggleBtn = document.getElementById('btn-theme-toggle');
+
+  let effectiveTheme = mode;
+  if (mode === 'auto') {
+    const isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    effectiveTheme = isDark ? 'dark' : 'light';
+  }
+
+  document.documentElement.setAttribute('data-theme', effectiveTheme);
+  document.body.setAttribute('data-theme', effectiveTheme);
+
+  if (effectiveTheme === 'dark') {
+    document.body.classList.add('koda-theme-dark');
+  } else {
+    document.body.classList.remove('koda-theme-dark');
+  }
+
+  if (toggleBtn) {
+    if (mode === 'light') {
+      toggleBtn.textContent = '☀️';
+      toggleBtn.title = 'Theme: Light Mode (Click for Dark)';
+    } else if (mode === 'dark') {
+      toggleBtn.textContent = '🌙';
+      toggleBtn.title = 'Theme: Dark Mode (Click for Auto System)';
+    } else {
+      toggleBtn.textContent = '💻';
+      toggleBtn.title = 'Theme: Auto System (Click for Light)';
+    }
+  }
+}
 
 function setupTabs() {
   const tabs = document.querySelectorAll('.koda-tab');
@@ -1092,6 +1178,34 @@ function renderQueue(queue) {
     category: 'popup',
     description: 'Styling for extension popup window (Web App Theme)',
     content: `/* Koda Manga Downloader Popup - Web App Visual Theme */
+:root {
+  --bg-canvas: #F9F9F7;
+  --bg-surface: #FFFFFF;
+  --bg-input: #FFFFFF;
+  --text-primary: #121212;
+  --text-secondary: rgba(18, 18, 18, 0.7);
+  --border-color: #121212;
+  --shadow-color: #121212;
+  --accent-orange: #FF4D00;
+  --accent-orange-text: #FFFFFF;
+  --btn-subtle-bg: #FFFFFF;
+  --btn-subtle-hover: #F9F9F7;
+}
+
+[data-theme="dark"], body.koda-theme-dark {
+  --bg-canvas: #0F172A;
+  --bg-surface: #1E293B;
+  --bg-input: #0F172A;
+  --text-primary: #F1F5F9;
+  --text-secondary: #94A3B8;
+  --border-color: #334155;
+  --shadow-color: #020617;
+  --accent-orange: #FF4D00;
+  --accent-orange-text: #FFFFFF;
+  --btn-subtle-bg: #1E293B;
+  --btn-subtle-hover: #334155;
+}
+
 * {
   box-sizing: border-box;
   margin: 0;
@@ -1101,9 +1215,10 @@ function renderQueue(queue) {
 body.koda-theme-webapp {
   width: 380px;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  background-color: #F9F9F7;
-  color: #121212;
-  border: 4px solid #121212;
+  background-color: var(--bg-canvas);
+  color: var(--text-primary);
+  border: 4px solid var(--border-color);
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
 }
 
 .koda-popup-container {
@@ -1115,7 +1230,7 @@ body.koda-theme-webapp {
   align-items: center;
   justify-content: space-between;
   padding-bottom: 12px;
-  border-bottom: 2px solid #121212;
+  border-bottom: 2px solid var(--border-color);
   margin-bottom: 14px;
 }
 
@@ -1125,13 +1240,19 @@ body.koda-theme-webapp {
   gap: 10px;
 }
 
+.koda-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .koda-logo-box {
   width: 38px;
   height: 38px;
-  background: #FF4D00;
-  color: #FFFFFF;
-  border: 2px solid #121212;
-  box-shadow: 2px 2px 0px #121212;
+  background: var(--accent-orange);
+  color: var(--accent-orange-text);
+  border: 2px solid var(--border-color);
+  box-shadow: 2px 2px 0px var(--shadow-color);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1150,16 +1271,16 @@ body.koda-theme-webapp {
   font-style: italic;
   letter-spacing: -0.03em;
   text-transform: uppercase;
-  color: #121212;
+  color: var(--text-primary);
 }
 
 .koda-version-tag {
   font-size: 9px;
   font-weight: 900;
-  background: #FF4D00;
-  color: #FFFFFF;
+  background: var(--accent-orange);
+  color: var(--accent-orange-text);
   padding: 1px 5px;
-  border: 1px solid #121212;
+  border: 1px solid var(--border-color);
   text-transform: uppercase;
 }
 
@@ -1167,24 +1288,28 @@ body.koda-theme-webapp {
   font-size: 9px;
   font-weight: 900;
   letter-spacing: 0.1em;
-  color: #121212;
-  opacity: 0.7;
+  color: var(--text-secondary);
 }
 
 .koda-icon-btn {
   text-decoration: none;
-  font-size: 18px;
+  font-size: 16px;
   cursor: pointer;
-  background: #FFFFFF;
-  border: 2px solid #121212;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  border: 2px solid var(--border-color);
   padding: 4px 8px;
-  box-shadow: 2px 2px 0px #121212;
-  transition: transform 0.1s;
+  box-shadow: 2px 2px 0px var(--shadow-color);
+  transition: transform 0.1s, background-color 0.2s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .koda-icon-btn:hover {
   transform: translate(-1px, -1px);
-  box-shadow: 3px 3px 0px #121212;
+  box-shadow: 3px 3px 0px var(--shadow-color);
+  background: var(--btn-subtle-hover);
 }
 
 .koda-nav-tabs {
@@ -1195,23 +1320,23 @@ body.koda-theme-webapp {
 
 .koda-tab {
   flex: 1;
-  background: #FFFFFF;
-  border: 2px solid #121212;
-  color: #121212;
+  background: var(--bg-surface);
+  border: 2px solid var(--border-color);
+  color: var(--text-primary);
   padding: 8px 4px;
   font-size: 10px;
   font-weight: 900;
   letter-spacing: 0.05em;
   text-transform: uppercase;
   cursor: pointer;
-  box-shadow: 2px 2px 0px #121212;
+  box-shadow: 2px 2px 0px var(--shadow-color);
   transition: all 0.15s;
 }
 
 .koda-tab.active {
-  background: #FF4D00;
-  color: #FFFFFF;
-  box-shadow: 3px 3px 0px #121212;
+  background: var(--accent-orange);
+  color: var(--accent-orange-text);
+  box-shadow: 3px 3px 0px var(--shadow-color);
 }
 
 .koda-tab-content {
@@ -1223,9 +1348,9 @@ body.koda-theme-webapp {
 }
 
 .koda-card {
-  background: #FFFFFF;
-  border: 2px solid #121212;
-  box-shadow: 3px 3px 0px #121212;
+  background: var(--bg-surface);
+  border: 2px solid var(--border-color);
+  box-shadow: 3px 3px 0px var(--shadow-color);
   padding: 14px;
 }
 
@@ -1244,7 +1369,7 @@ body.koda-theme-webapp {
   display: block;
   font-size: 10px;
   font-weight: 900;
-  color: #121212;
+  color: var(--text-primary);
   margin-bottom: 4px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -1252,9 +1377,9 @@ body.koda-theme-webapp {
 
 .koda-input, .koda-select {
   width: 100%;
-  background: #FFFFFF;
-  border: 2px solid #121212;
-  color: #121212;
+  background: var(--bg-input);
+  border: 2px solid var(--border-color);
+  color: var(--text-primary);
   padding: 8px 10px;
   font-weight: 700;
   font-size: 12px;
@@ -1262,7 +1387,7 @@ body.koda-theme-webapp {
 }
 
 .koda-input:focus, .koda-select:focus {
-  outline: 2px solid #FF4D00;
+  outline: 2px solid var(--accent-orange);
   outline-offset: 1px;
 }
 
@@ -1274,69 +1399,69 @@ body.koda-theme-webapp {
 }
 
 .koda-badge {
-  background: #121212;
-  color: #FFFFFF;
+  background: var(--accent-orange);
+  color: var(--accent-orange-text);
   font-size: 10px;
   font-weight: 900;
   padding: 4px 10px;
   letter-spacing: 0.08em;
-  border: 1px solid #121212;
+  border: 1px solid var(--border-color);
 }
 
 .koda-btn-subtle {
-  background: #FFFFFF;
-  border: 2px solid #121212;
-  color: #121212;
+  background: var(--btn-subtle-bg);
+  border: 2px solid var(--border-color);
+  color: var(--text-primary);
   font-size: 10px;
   font-weight: 900;
   padding: 4px 8px;
   cursor: pointer;
-  box-shadow: 2px 2px 0px #121212;
+  box-shadow: 2px 2px 0px var(--shadow-color);
 }
 
 .koda-btn-subtle:hover {
-  background: #F9F9F7;
+  background: var(--btn-subtle-hover);
 }
 
 .koda-btn-primary {
-  background: #FF4D00;
-  color: #FFFFFF;
-  border: 2px solid #121212;
+  background: var(--accent-orange);
+  color: var(--accent-orange-text);
+  border: 2px solid var(--border-color);
   padding: 12px;
   font-weight: 900;
   font-size: 12px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   cursor: pointer;
-  box-shadow: 3px 3px 0px #121212;
+  box-shadow: 3px 3px 0px var(--shadow-color);
   transition: all 0.15s;
 }
 
 .koda-btn-primary:hover {
-  background: #121212;
-  color: #FFFFFF;
+  background: var(--border-color);
+  color: var(--bg-surface);
   transform: translate(-1px, -1px);
-  box-shadow: 4px 4px 0px #121212;
+  box-shadow: 4px 4px 0px var(--shadow-color);
 }
 
 .koda-btn-secondary {
-  background: #121212;
-  color: #FFFFFF;
-  border: 2px solid #121212;
+  background: var(--border-color);
+  color: var(--bg-surface);
+  border: 2px solid var(--border-color);
   padding: 10px;
   font-weight: 900;
   font-size: 11px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   cursor: pointer;
-  box-shadow: 3px 3px 0px #FF4D00;
+  box-shadow: 3px 3px 0px var(--accent-orange);
 }
 
 .koda-hint {
   font-size: 11px;
   font-weight: 900;
   margin-bottom: 10px;
-  color: #121212;
+  color: var(--text-primary);
 }
 
 .full-width { width: 100%; }
@@ -1348,9 +1473,9 @@ body.koda-theme-webapp {
 }
 
 .koda-task-item {
-  background: #FFFFFF;
-  border: 2px solid #121212;
-  box-shadow: 3px 3px 0px #121212;
+  background: var(--bg-surface);
+  border: 2px solid var(--border-color);
+  box-shadow: 3px 3px 0px var(--shadow-color);
   padding: 10px;
   margin-bottom: 10px;
 }
@@ -1365,7 +1490,7 @@ body.koda-theme-webapp {
 }
 
 .koda-task-name {
-  color: #121212;
+  color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1373,25 +1498,25 @@ body.koda-theme-webapp {
 }
 
 .koda-format-tag {
-  background: #FF4D00;
-  color: #FFFFFF;
+  background: var(--accent-orange);
+  color: var(--accent-orange-text);
   font-size: 9px;
   font-weight: 900;
   padding: 2px 6px;
-  border: 1px solid #121212;
+  border: 1px solid var(--border-color);
 }
 
 .koda-progress-bar-bg {
   height: 10px;
-  background: #F9F9F7;
-  border: 2px solid #121212;
+  background: var(--bg-canvas);
+  border: 2px solid var(--border-color);
   overflow: hidden;
   margin-bottom: 6px;
 }
 
 .koda-progress-bar-fill {
   height: 100%;
-  background: #FF4D00;
+  background: var(--accent-orange);
   transition: width 0.2s ease;
 }
 
@@ -1400,32 +1525,32 @@ body.koda-theme-webapp {
   justify-content: space-between;
   font-size: 10px;
   font-weight: 900;
-  color: #121212;
+  color: var(--text-primary);
 }
 
 .koda-task-status {
   text-transform: uppercase;
-  color: #FF4D00;
+  color: var(--accent-orange);
 }
 
 .koda-empty-state {
   text-align: center;
   font-size: 11px;
   font-weight: 900;
-  color: #121212;
+  color: var(--text-secondary);
   padding: 24px 0;
-  background: #FFFFFF;
-  border: 2px dashed #121212;
+  background: var(--bg-surface);
+  border: 2px dashed var(--border-color);
 }
 
 .koda-footer {
   margin-top: 14px;
   padding-top: 10px;
-  border-top: 2px solid #121212;
+  border-top: 2px solid var(--border-color);
   font-size: 10px;
   font-weight: 900;
   letter-spacing: 0.05em;
-  color: #121212;
+  color: var(--text-primary);
   text-align: center;
   text-transform: uppercase;
 }`
@@ -1444,7 +1569,10 @@ body.koda-theme-webapp {
 <body class="koda-options-bg">
   <div class="koda-options-wrapper">
     <header class="koda-opt-header">
-      <div class="header-tag">ENGINE CONFIGURATION</div>
+      <div class="koda-opt-header-top">
+        <div class="header-tag">ENGINE CONFIGURATION</div>
+        <button id="btn-theme-toggle" class="koda-icon-btn" title="Toggle Light/Dark Theme" aria-label="Toggle Theme">🌙</button>
+      </div>
       <h1>⚙️ KODA MANGA DOWNLOADER SETTINGS</h1>
       <p>Configure throttle rules, auto retries, and naming target templates.</p>
     </header>
@@ -1497,7 +1625,9 @@ body.koda-theme-webapp {
  * Koda Manga Downloader Extension - Options Controller
  */
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+  await initTheme();
+
   chrome.storage.local.get(['settings'], (res) => {
     const s = res.settings || {};
     if (s.maxConcurrentDownloads) document.getElementById('opt-concurrency').value = s.maxConcurrentDownloads;
@@ -1521,18 +1651,129 @@ document.addEventListener('DOMContentLoaded', () => {
       setTimeout(() => { msg.textContent = ''; }, 3000);
     });
   });
-});`
+});
+
+async function initTheme() {
+  const toggleBtn = document.getElementById('btn-theme-toggle');
+
+  let savedTheme = 'light';
+  try {
+    const res = await new Promise(resolve => {
+      if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+        chrome.storage.local.get(['theme', 'settings'], resolve);
+      } else {
+        resolve({});
+      }
+    });
+    savedTheme = (res && (res.theme || (res.settings && res.settings.theme))) || 
+                 localStorage.getItem('koda_theme') || 'light';
+  } catch (e) {
+    savedTheme = localStorage.getItem('koda_theme') || 'light';
+  }
+
+  window.kodaThemeMode = savedTheme;
+  applyTheme(savedTheme);
+
+  if (window.matchMedia) {
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+      if (window.kodaThemeMode === 'auto') {
+        applyTheme('auto');
+      }
+    });
+  }
+
+  if (toggleBtn) {
+    toggleBtn.addEventListener('click', () => {
+      const mode = window.kodaThemeMode || 'light';
+      let nextMode = 'light';
+      if (mode === 'light') nextMode = 'dark';
+      else if (mode === 'dark') nextMode = 'auto';
+      else nextMode = 'light';
+
+      window.kodaThemeMode = nextMode;
+      applyTheme(nextMode);
+
+      try {
+        localStorage.setItem('koda_theme', nextMode);
+        if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+          chrome.storage.local.set({ theme: nextMode });
+        }
+      } catch (e) {}
+    });
+  }
+}
+
+function applyTheme(mode) {
+  const toggleBtn = document.getElementById('btn-theme-toggle');
+
+  let effectiveTheme = mode;
+  if (mode === 'auto') {
+    const isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    effectiveTheme = isDark ? 'dark' : 'light';
+  }
+
+  document.documentElement.setAttribute('data-theme', effectiveTheme);
+  document.body.setAttribute('data-theme', effectiveTheme);
+
+  if (effectiveTheme === 'dark') {
+    document.body.classList.add('koda-theme-dark');
+  } else {
+    document.body.classList.remove('koda-theme-dark');
+  }
+
+  if (toggleBtn) {
+    if (mode === 'light') {
+      toggleBtn.textContent = '☀️';
+      toggleBtn.title = 'Theme: Light Mode (Click for Dark)';
+    } else if (mode === 'dark') {
+      toggleBtn.textContent = '🌙';
+      toggleBtn.title = 'Theme: Dark Mode (Click for Auto System)';
+    } else {
+      toggleBtn.textContent = '💻';
+      toggleBtn.title = 'Theme: Auto System (Click for Light)';
+    }
+  }
+}`
   },
   {
     path: 'options/options.css',
     category: 'options',
     description: 'Styles for the extension options dashboard (Web App Theme)',
     content: `/* Koda Manga Downloader Options Page - Web App Visual Theme */
+:root {
+  --bg-canvas: #F9F9F7;
+  --bg-surface: #FFFFFF;
+  --bg-input: #FFFFFF;
+  --text-primary: #121212;
+  --text-secondary: rgba(18, 18, 18, 0.7);
+  --border-color: #121212;
+  --shadow-color: #121212;
+  --accent-orange: #FF4D00;
+  --accent-orange-text: #FFFFFF;
+  --btn-subtle-bg: #FFFFFF;
+  --btn-subtle-hover: #F9F9F7;
+}
+
+[data-theme="dark"], body.koda-theme-dark {
+  --bg-canvas: #0F172A;
+  --bg-surface: #1E293B;
+  --bg-input: #0F172A;
+  --text-primary: #F1F5F9;
+  --text-secondary: #94A3B8;
+  --border-color: #334155;
+  --shadow-color: #020617;
+  --accent-orange: #FF4D00;
+  --accent-orange-text: #FFFFFF;
+  --btn-subtle-bg: #1E293B;
+  --btn-subtle-hover: #334155;
+}
+
 body.koda-options-bg {
-  background-color: #F9F9F7;
-  color: #121212;
+  background-color: var(--bg-canvas);
+  color: var(--text-primary);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   padding: 40px 20px;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 .koda-options-wrapper {
@@ -1544,39 +1785,65 @@ body.koda-options-bg {
   margin-bottom: 24px;
 }
 
+.koda-opt-header-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
 .header-tag {
   display: inline-block;
-  background: #FF4D00;
-  color: #FFFFFF;
+  background: var(--accent-orange);
+  color: var(--accent-orange-text);
   font-size: 10px;
   font-weight: 900;
   padding: 2px 8px;
-  border: 1px solid #121212;
+  border: 1px solid var(--border-color);
   letter-spacing: 0.1em;
-  margin-bottom: 8px;
+}
+
+.koda-icon-btn {
+  text-decoration: none;
+  font-size: 16px;
+  cursor: pointer;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  border: 2px solid var(--border-color);
+  padding: 4px 8px;
+  box-shadow: 2px 2px 0px var(--shadow-color);
+  transition: transform 0.1s, background-color 0.2s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.koda-icon-btn:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0px var(--shadow-color);
+  background: var(--btn-subtle-hover);
 }
 
 .koda-opt-header h1 {
   font-size: 24px;
   font-weight: 900;
   font-style: italic;
-  color: #121212;
+  color: var(--text-primary);
   margin-bottom: 6px;
   text-transform: uppercase;
   letter-spacing: -0.03em;
 }
 
 .koda-opt-header p {
-  color: #121212;
-  opacity: 0.7;
+  color: var(--text-secondary);
   font-size: 12px;
   font-weight: 700;
 }
 
 .koda-opt-card {
-  background: #FFFFFF;
-  border: 2px solid #121212;
-  box-shadow: 4px 4px 0px #121212;
+  background: var(--bg-surface);
+  border: 2px solid var(--border-color);
+  box-shadow: 4px 4px 0px var(--shadow-color);
   padding: 20px;
   margin-bottom: 20px;
 }
@@ -1584,9 +1851,9 @@ body.koda-options-bg {
 .koda-opt-card h2 {
   font-size: 13px;
   font-weight: 900;
-  color: #121212;
+  color: var(--text-primary);
   margin-bottom: 16px;
-  border-bottom: 2px solid #121212;
+  border-bottom: 2px solid var(--border-color);
   padding-bottom: 8px;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -1600,7 +1867,7 @@ body.koda-options-bg {
   display: block;
   font-size: 11px;
   font-weight: 900;
-  color: #121212;
+  color: var(--text-primary);
   margin-bottom: 6px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -1608,9 +1875,9 @@ body.koda-options-bg {
 
 .koda-opt-field input[type="text"], .koda-opt-field input[type="number"] {
   width: 100%;
-  background: #FFFFFF;
-  border: 2px solid #121212;
-  color: #121212;
+  background: var(--bg-input);
+  border: 2px solid var(--border-color);
+  color: var(--text-primary);
   padding: 10px;
   font-weight: 700;
   font-size: 13px;
@@ -1618,7 +1885,7 @@ body.koda-options-bg {
 }
 
 .koda-opt-field input:focus {
-  outline: 2px solid #FF4D00;
+  outline: 2px solid var(--accent-orange);
   outline-offset: 1px;
 }
 
@@ -1626,34 +1893,38 @@ body.koda-options-bg {
   display: block;
   font-size: 10px;
   font-weight: 700;
-  color: #121212;
-  opacity: 0.6;
+  color: var(--text-secondary);
   margin-top: 4px;
 }
 
+.koda-opt-actions {
+  display: flex;
+  align-items: center;
+}
+
 .btn-save {
-  background: #FF4D00;
-  color: #FFFFFF;
-  border: 2px solid #121212;
+  background: var(--accent-orange);
+  color: var(--accent-orange-text);
+  border: 2px solid var(--border-color);
   padding: 12px 28px;
   font-weight: 900;
   font-size: 13px;
   letter-spacing: 0.08em;
   cursor: pointer;
-  box-shadow: 3px 3px 0px #121212;
+  box-shadow: 3px 3px 0px var(--shadow-color);
   transition: all 0.15s;
 }
 
 .btn-save:hover {
-  background: #121212;
-  color: #FFFFFF;
+  background: var(--border-color);
+  color: var(--bg-surface);
   transform: translate(-1px, -1px);
-  box-shadow: 4px 4px 0px #121212;
+  box-shadow: 4px 4px 0px var(--shadow-color);
 }
 
 .save-msg {
   margin-left: 14px;
-  color: #FF4D00;
+  color: var(--accent-orange);
   font-weight: 900;
   font-size: 12px;
 }`
