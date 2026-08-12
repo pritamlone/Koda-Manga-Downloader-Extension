@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Koda Manga Downloader</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body class="koda-theme-webapp">
+  <div class="koda-popup-container">
+    <!-- Top Header Bar -->
+    <header class="koda-header">
+      <div class="koda-brand">
+        <div class="koda-logo-box">📖</div>
+        <div>
+          <div class="koda-title-row">
+            <h1 class="koda-app-name">KODA MANGA</h1>
+            <span class="koda-version-tag">ENGINE V3</span>
+          </div>
+          <p class="koda-subtitle">MANGA CHAPTER DOWNLOADER</p>
+        </div>
+      </div>
+      <a href="../options/options.html" target="_blank" class="koda-icon-btn" title="Settings">⚙️</a>
+    </header>
+
+    <!-- Navigation Tabs -->
+    <nav class="koda-nav-tabs">
+      <button class="koda-tab active" data-tab="tab-scrape">CURRENT PAGE</button>
+      <button class="koda-tab" data-tab="tab-batch">BATCH QUEUE</button>
+      <button class="koda-tab" data-tab="tab-active">DOWNLOADS (<span id="active-count">0</span>)</button>
+    </nav>
+
+    <!-- Tab 1: Current Page Scraper -->
+    <section id="tab-scrape" class="koda-tab-content active">
+      <div class="koda-card">
+        <div class="koda-field-group">
+          <label class="koda-label">DETECTED MANGA TITLE</label>
+          <input type="text" id="input-manga-title" class="koda-input" value="Scanning page...">
+        </div>
+        <div class="koda-field-row">
+          <div class="koda-field-group flex-1">
+            <label class="koda-label">CHAPTER TITLE</label>
+            <input type="text" id="input-chapter-title" class="koda-input" value="Chapter 1">
+          </div>
+          <div class="koda-field-group flex-1">
+            <label class="koda-label">EXPORT FORMAT</label>
+            <select id="select-format" class="koda-select">
+              <option value="cbz">CBZ (Comic Zip)</option>
+              <option value="zip">Standard ZIP</option>
+              <option value="pdf">PDF Document</option>
+              <option value="folder">Images Folder</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="koda-page-summary">
+          <span class="koda-badge" id="badge-page-count">0 PAGES DETECTED</span>
+          <button id="btn-rescan" class="koda-btn-subtle">🔄 RESCAN PAGE</button>
+        </div>
+
+        <button id="btn-download-now" class="koda-btn-primary full-width">
+          🚀 DOWNLOAD CHAPTER NOW
+        </button>
+      </div>
+    </section>
+
+    <!-- Tab 2: Batch Range Selector -->
+    <section id="tab-batch" class="koda-tab-content">
+      <div class="koda-card">
+        <p class="koda-hint">SELECT CHAPTER RANGE FOR BULK QUEUEING:</p>
+        <div class="koda-field-row">
+          <div class="koda-field-group flex-1">
+            <label class="koda-label">START CHAPTER</label>
+            <input type="number" id="batch-start" class="koda-input" value="1" min="1">
+          </div>
+          <div class="koda-field-group flex-1">
+            <label class="koda-label">END CHAPTER</label>
+            <input type="number" id="batch-end" class="koda-input" value="10" min="1">
+          </div>
+        </div>
+
+        <button id="btn-start-batch" class="koda-btn-secondary full-width mt-12">
+          📥 QUEUE CHAPTER RANGE
+        </button>
+      </div>
+    </section>
+
+    <!-- Tab 3: Active Download Monitor -->
+    <section id="tab-active" class="koda-tab-content">
+      <div id="queue-list-container" class="koda-queue-list">
+        <div class="koda-empty-state">NO ACTIVE DOWNLOADS IN QUEUE.</div>
+      </div>
+    </section>
+
+    <!-- Footer Status -->
+    <footer class="koda-footer">
+      <span class="koda-status-text" id="status-line">ENGINE STATUS: READY</span>
+    </footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

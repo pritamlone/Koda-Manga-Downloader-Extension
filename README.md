@@ -23,7 +23,21 @@ Koda is a Chrome Manifest V3 extension and interactive management studio designe
 └── package.json
 ```
 
-## Getting Started
+## How to Load Unpacked Extension in Chrome / Edge
+
+### Option 1: Exporting from the Koda Studio App (Recommended)
+1. In the Koda Studio web dashboard, click the orange **Export Extension (.zip)** button (top right header or Full Output tab).
+2. Unzip the downloaded file (`koda-manga-downloader-v3.0.0.zip`).
+3. Open your browser's extension page:
+   - **Microsoft Edge**: Navigate to `edge://extensions`
+   - **Google Chrome**: Navigate to `chrome://extensions`
+4. Enable **Developer Mode** (toggle on the left sidebar or top right).
+5. Click **Load Unpacked** and select the extracted `koda-manga-downloader-v3.0.0` folder.
+
+> ⚠️ **Important Note on "Manifest file is missing" Error**:
+> Do NOT select the outer repository folder (`Koda-Manga-Downloader-Extension-main`) directly in "Load Unpacked". That outer folder contains the React Studio web dashboard source code (`package.json`, `src/`, etc.). `manifest.json` is located inside the exported extension zip package or the extension build output!
+
+## Getting Started (Studio Development)
 
 1. Install dependencies:
    ```bash

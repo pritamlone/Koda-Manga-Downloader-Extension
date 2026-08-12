@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Koda Manga Downloader - Settings</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body class="koda-options-bg">
+  <div class="koda-options-wrapper">
+    <header class="koda-opt-header">
+      <div class="header-tag">ENGINE CONFIGURATION</div>
+      <h1>⚙️ KODA MANGA DOWNLOADER SETTINGS</h1>
+      <p>Configure throttle rules, auto retries, and naming target templates.</p>
+    </header>
+
+    <div class="koda-opt-card">
+      <h2>🚀 THROTTLE & RATE LIMIT PROTECTION (V3 ENGINE)</h2>
+
+      <div class="koda-opt-field">
+        <label>MAX PARALLEL CONCURRENCY</label>
+        <input type="number" id="opt-concurrency" min="1" max="10" value="3">
+        <span class="field-help">Recommended (2-3) to avoid HTTP 429 rate limit blocks on strict manga CDNs.</span>
+      </div>
+
+      <div class="koda-opt-field">
+        <label>INTER-REQUEST DELAY (MS)</label>
+        <input type="number" id="opt-delay" min="0" max="5000" step="50" value="250">
+        <span class="field-help">Throttle delay in milliseconds between image chunk requests.</span>
+      </div>
+
+      <div class="koda-opt-field">
+        <label>AUTOMATIC RETRY LIMIT</label>
+        <input type="number" id="opt-retries" min="1" max="10" value="3">
+        <span class="field-help">Exponential backoff retry attempts per image download failure.</span>
+      </div>
+    </div>
+
+    <div class="koda-opt-card">
+      <h2>📁 FILENAME & PATH TEMPLATES</h2>
+      <div class="koda-opt-field">
+        <label>TARGET PATH PATTERN</label>
+        <input type="text" id="opt-template" value="Koda_Manga/{manga_title}/{chapter_title}.{ext}">
+        <span class="field-help">Available placeholders: {manga_title}, {chapter_title}, {chapter_num}, {ext}</span>
+      </div>
+    </div>
+
+    <div class="koda-opt-actions">
+      <button id="btn-save-settings" class="btn-save">💾 SAVE CONFIGURATION</button>
+      <span id="save-msg" class="save-msg"></span>
+    </div>
+  </div>
+  <script src="options.js"></script>
+</body>
+</html>

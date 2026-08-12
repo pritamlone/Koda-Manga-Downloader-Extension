@@ -59,7 +59,6 @@ export const EXTENSION_FILES: ExtensionFile[] = [
     "activeTab",
     "downloads",
     "storage",
-    "offscreen",
     "scripting",
     "alarms"
   ],
@@ -98,17 +97,18 @@ export const EXTENSION_FILES: ExtensionFile[] = [
   {
     path: 'background/service-worker.js',
     category: 'background',
-    description: 'Manifest V3 background worker managing persistent queue, offscreen document, and chrome downloads',
+    description: 'Manifest V3 background worker managing persistent queue and direct host-permission image fetching',
     content: `/**
- * Koda Manga Downloader Extension - Service Worker
- * Combined V1 Battle-Tested Queue Engine + V2 Storage & Offscreen Features
+ * Koda Manga Downloader Extension - Background Service Worker
+ * Solid Engine V3: Direct Host-Permission Image Fetcher + Webpage Content Script Fallback +
+ * Pure JSZip CBZ/ZIP Packaging + Chrome Download API Integration.
  */
 
-importScripts('../utils/download_queue.js');
+importScripts('../lib/jszip.min.js');
 
-let offscreenCreating = null;
+let isProcessingQueue = false;
 
-// Initialize background queue listener & alarms
+// Initialize extension storage & alarms
 chrome.runtime.onInstalled.addListener(() => {
   console.log('[Koda Background] Service Worker Installed - Initializing storage...');
   chrome.storage.local.get(['settings', 'queue'], (res) => {
@@ -119,9 +119,8 @@ chrome.runtime.onInstalled.addListener(() => {
           maxConcurrentDownloads: 3,
           delayBetweenRequestsMs: 300,
           autoRetryAttempts: 3,
-          filenameTemplate: '{manga_title}/Chapter_{chapter_num}/{page_index}_{filename}',
-          theme: 'dark',
-          customSelectors: []
+          filenameTemplate: 'Koda_Manga/{manga_title}/{chapter_title}.{ext}',
+          theme: 'webapp'
         }
       });
     }
@@ -130,30 +129,22 @@ chrome.runtime.onInstalled.addListener(() => {
     }
   });
 
-  // Keep-alive alarm to prevent SW stall during long operations
-  chrome.alarms.create('koda_heartbeat', { periodInMinutes: 1 });
+  chrome.alarms.create('koda_queue_heartbeat', { periodInMinutes: 0.5 });
 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === 'koda_heartbeat') {
-    // Check if there are active tasks in storage
-    chrome.storage.local.get(['queue'], (res) => {
-      const queue = res.queue || [];
-      const active = queue.some(t => t.status === 'downloading' || t.status === 'queued');
-      if (active) {
-        processNextQueueItem();
-      }
-    });
+  if (alarm.name === 'koda_queue_heartbeat') {
+    processNextQueueItem();
   }
 });
 
-// Message hub
+// Runtime Message Hub
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'START_DOWNLOAD_TASK') {
     enqueueTask(message.task).then(sendResponse);
     return true; // Async response
   }
-  
+
   if (message.action === 'GET_QUEUE_STATUS') {
     chrome.storage.local.get(['queue'], (res) => {
       sendResponse({ queue: res.queue || [] });
@@ -172,49 +163,29 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 });
 
-// Helper: Ensure Offscreen document exists for canvas / JSZip / PDF tasks
-async function setupOffscreenDocument(path) {
-  const offscreenUrl = chrome.runtime.getURL(path);
-  const existingContexts = await chrome.runtime.getContexts({
-    contextTypes: ['OFFSCREEN_DOCUMENT'],
-    documentUrls: [offscreenUrl]
-  });
-
-  if (existingContexts.length > 0) {
-    return;
-  }
-
-  if (offscreenCreating) {
-    await offscreenCreating;
-  } else {
-    offscreenCreating = chrome.offscreen.createDocument({
-      url: path,
-      reasons: ['BLOB_GENERATION'],
-      justification: 'Packaging downloaded manga images into CBZ zip or PDF files safely in background'
-    });
-    await offscreenCreating;
-    offscreenCreating = null;
-  }
-}
-
-// Queue management
+// Enqueue Task
 async function enqueueTask(taskData) {
   const res = await chrome.storage.local.get(['queue', 'settings']);
   const queue = res.queue || [];
   const settings = res.settings || {};
 
+  const pagesList = Array.isArray(taskData.pages) ? taskData.pages : [];
+  if (pagesList.length === 0) {
+    return { success: false, error: 'No page URLs provided' };
+  }
+
   const newTask = {
     id: 'task_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
     mangaTitle: sanitizePathSegment(taskData.mangaTitle || 'Manga'),
-    chapterTitle: sanitizePathSegment(taskData.chapterTitle || 'Chapter'),
+    chapterTitle: sanitizePathSegment(taskData.chapterTitle || 'Chapter 1'),
     chapterNum: taskData.chapterNum || 1,
-    totalPages: taskData.pages.length,
+    totalPages: pagesList.length,
     completedPages: 0,
     status: 'queued',
     format: taskData.format || settings.defaultFormat || 'cbz',
-    pages: taskData.pages.map((url, i) => ({
+    pages: pagesList.map((url, i) => ({
       index: i + 1,
-      url: url,
+      url: typeof url === 'string' ? url : (url.url || url.src),
       status: 'pending'
     })),
     createdAt: Date.now()
@@ -223,12 +194,15 @@ async function enqueueTask(taskData) {
   queue.push(newTask);
   await chrome.storage.local.set({ queue });
 
-  // Start processing queue
+  // Trigger processing immediately
   processNextQueueItem();
   return { success: true, taskId: newTask.id };
 }
 
+// Solid Queue Processing Engine
 async function processNextQueueItem() {
+  if (isProcessingQueue) return;
+
   const res = await chrome.storage.local.get(['queue', 'settings']);
   const queue = res.queue || [];
   const settings = res.settings || {};
@@ -237,30 +211,198 @@ async function processNextQueueItem() {
   if (activeTask) return; // Busy
 
   const nextTask = queue.find(t => t.status === 'queued');
-  if (!nextTask) return; // All done
+  if (!nextTask) return; // Queue empty
 
+  isProcessingQueue = true;
   nextTask.status = 'downloading';
+  nextTask.completedPages = 0;
   await chrome.storage.local.set({ queue });
 
-  // Use Offscreen document to run the V1 robust chunked download queue
-  await setupOffscreenDocument('offscreen/offscreen.html');
-
-  chrome.runtime.sendMessage({
-    action: 'OFFSCREEN_PROCESS_TASK',
-    task: nextTask,
-    settings: settings
-  });
+  try {
+    await executeDownloadTask(nextTask, settings);
+  } catch (err) {
+    console.error('[Koda Engine Error] Task failed:', err);
+    await updateTaskStatus(nextTask.id, 'failed');
+  } finally {
+    isProcessingQueue = false;
+    processNextQueueItem(); // Check for next item in queue
+  }
 }
 
-async function cancelTask(taskId) {
-  const res = await chrome.storage.local.get(['queue']);
-  let queue = res.queue || [];
-  queue = queue.filter(t => t.id !== taskId);
-  await chrome.storage.local.set({ queue });
-  return { success: true };
+async function executeDownloadTask(task, settings) {
+  console.log(\`[Koda Engine] Executing Task: \${task.mangaTitle} - \${task.chapterTitle} (\${task.totalPages} pages)\`);
+
+  const concurrency = settings.maxConcurrentDownloads || 3;
+  const delayMs = settings.delayBetweenRequestsMs || 250;
+  const maxRetries = settings.autoRetryAttempts || 3;
+
+  const downloadedImages = [];
+  let completed = 0;
+
+  // Process pages in concurrency chunks
+  for (let i = 0; i < task.pages.length; i += concurrency) {
+    const chunk = task.pages.slice(i, i + concurrency);
+
+    const results = await Promise.all(
+      chunk.map(page => fetchPageImageWithRetries(page, maxRetries, delayMs))
+    );
+
+    for (const res of results) {
+      if (res && res.bytes) {
+        downloadedImages.push(res);
+        completed++;
+      }
+    }
+
+    // Update progress in chrome.storage.local for popup UI
+    await updateTaskProgress(task.id, completed, task.totalPages);
+
+    if (i + concurrency < task.pages.length) {
+      await new Promise(r => setTimeout(r, delayMs));
+    }
+  }
+
+  if (downloadedImages.length === 0) {
+    throw new Error('Failed to download any images for this chapter.');
+  }
+
+  // Sort images in page index order
+  downloadedImages.sort((a, b) => a.index - b.index);
+
+  // Set status to packaging
+  await updateTaskStatus(task.id, 'packaging');
+
+  // Generate target filename
+  const cleanManga = sanitizePathSegment(task.mangaTitle);
+  const cleanChap = sanitizePathSegment(task.chapterTitle);
+  const ext = task.format === 'cbz' ? 'cbz' : (task.format === 'zip' ? 'zip' : 'pdf');
+
+  if (task.format === 'cbz' || task.format === 'zip') {
+    const zip = new JSZip();
+    downloadedImages.forEach((img, idx) => {
+      const pageNum = String(idx + 1).padStart(3, '0');
+      const filename = \`page_\${pageNum}.\${img.extension}\`;
+      zip.file(filename, img.bytes);
+    });
+
+    const dataUrl = await zip.generateAsync({ type: 'base64' });
+    const fullDataUrl = \`data:application/zip;base64,\${dataUrl}\`;
+    const targetPath = \`Koda_Manga/\${cleanManga}/\${cleanChap}.\${ext}\`;
+
+    await triggerChromeDownload({
+      url: fullDataUrl,
+      filename: targetPath
+    });
+  } else if (task.format === 'pdf') {
+    const zip = new JSZip();
+    downloadedImages.forEach((img, idx) => {
+      const pageNum = String(idx + 1).padStart(3, '0');
+      zip.file(\`page_\${pageNum}.\${img.extension}\`, img.bytes);
+    });
+    const dataUrl = await zip.generateAsync({ type: 'base64' });
+    const fullDataUrl = \`data:application/zip;base64,\${dataUrl}\`;
+    const targetPath = \`Koda_Manga/\${cleanManga}/\${cleanChap}.pdf.zip\`;
+
+    await triggerChromeDownload({
+      url: fullDataUrl,
+      filename: targetPath
+    });
+  } else {
+    for (const img of downloadedImages) {
+      const pageNum = String(img.index).padStart(3, '0');
+      const targetPath = \`Koda_Manga/\${cleanManga}/\${cleanChap}/page_\${pageNum}.\${img.extension}\`;
+      
+      const blob = new Blob([img.bytes]);
+      const arrayBuffer = await blob.arrayBuffer();
+      let binary = '';
+      const bytes = new Uint8Array(arrayBuffer);
+      for (let k = 0; k < bytes.length; k++) {
+        binary += String.fromCharCode(bytes[k]);
+      }
+      const dataUrl = \`data:image/\${img.extension};base64,\${btoa(binary)}\`;
+
+      await triggerChromeDownload({
+        url: dataUrl,
+        filename: targetPath
+      });
+    }
+  }
+
+  await markTaskCompleted(task.id);
+  console.log(\`[Koda Engine] Task completed successfully: \${task.mangaTitle} - \${task.chapterTitle}\`);
 }
 
-async function triggerChromeDownload(options) {
+async function fetchPageImageWithRetries(page, maxRetries, delayMs) {
+  let attempt = 0;
+  while (attempt < maxRetries) {
+    try {
+      const res = await fetch(page.url, { mode: 'cors' });
+      if (res.ok) {
+        const buffer = await res.arrayBuffer();
+        const bytes = new Uint8Array(buffer);
+        const ext = getExtensionFromUrlOrType(page.url, res.headers.get('content-type'));
+        return {
+          index: page.index,
+          bytes: bytes,
+          extension: ext
+        };
+      }
+    } catch (err) {
+      // Fallback to content script
+    }
+
+    try {
+      const activeTabs = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (activeTabs.length > 0) {
+        const tabResponse = await new Promise((resolve) => {
+          chrome.tabs.sendMessage(activeTabs[0].id, {
+            action: 'FETCH_IMAGE_FROM_PAGE',
+            url: page.url
+          }, (response) => {
+            if (chrome.runtime.lastError || !response || !response.success) {
+              resolve(null);
+            } else {
+              resolve(response.data);
+            }
+          });
+        });
+
+        if (tabResponse && Array.isArray(tabResponse)) {
+          const bytes = new Uint8Array(tabResponse);
+          const ext = getExtensionFromUrlOrType(page.url, '');
+          return {
+            index: page.index,
+            bytes: bytes,
+            extension: ext
+          };
+        }
+      }
+    } catch (e) {}
+
+    attempt++;
+    if (attempt < maxRetries) {
+      await new Promise(r => setTimeout(r, delayMs * Math.pow(1.5, attempt)));
+    }
+  }
+
+  return null;
+}
+
+function getExtensionFromUrlOrType(url, contentType) {
+  if (contentType) {
+    if (contentType.includes('png')) return 'png';
+    if (contentType.includes('webp')) return 'webp';
+    if (contentType.includes('gif')) return 'gif';
+    if (contentType.includes('jpeg') || contentType.includes('jpg')) return 'jpg';
+  }
+  const cleanUrl = url.split('?')[0].toLowerCase();
+  if (cleanUrl.endsWith('.png')) return 'png';
+  if (cleanUrl.endsWith('.webp')) return 'webp';
+  if (cleanUrl.endsWith('.gif')) return 'gif';
+  return 'jpg';
+}
+
+function triggerChromeDownload(options) {
   return new Promise((resolve) => {
     chrome.downloads.download({
       url: options.url,
@@ -280,209 +422,6 @@ async function triggerChromeDownload(options) {
 
 function sanitizePathSegment(name) {
   return (name || 'Untitled')
-    .replace(/[\\\\/:*?"<>|]/g, '-')
-    .replace(/\\s+/g, ' ')
-    .trim();
-}
-`
-  },
-  {
-    path: 'offscreen/offscreen.html',
-    category: 'background',
-    description: 'Offscreen Document HTML environment for heavy packaging (JSZip/PDF)',
-    content: `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>Koda Offscreen Packaging Worker</title>
-  <script src="../lib/jszip.min.js"></script>
-  <script src="../lib/jspdf_builder.js"></script>
-  <script src="offscreen.js"></script>
-</head>
-<body>
-  <div id="status">Offscreen processing active...</div>
-</body>
-</html>`
-  },
-  {
-    path: 'offscreen/offscreen.js',
-    category: 'background',
-    description: 'Offscreen document script running reliable chunked downloads and CBZ/PDF packaging',
-    content: `/**
- * Koda Manga Downloader Extension - Offscreen Document Engine
- * Executes image fetching with rate limiting & backoff retries,
- * creates CBZ (zip) or PDF files, and triggers native chrome download.
- */
-
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.action === 'OFFSCREEN_PROCESS_TASK') {
-    executeTask(message.task, message.settings);
-  }
-});
-
-async function executeTask(task, settings) {
-  console.log('[Koda Offscreen] Processing task:', task.mangaTitle, task.chapterTitle);
-
-  const concurrency = settings.maxConcurrentDownloads || 3;
-  const delayMs = settings.delayBetweenRequestsMs || 300;
-  const maxRetries = settings.autoRetryAttempts || 3;
-
-  const downloadedImages = [];
-  let completed = 0;
-
-  // Process pages in throttled chunks (V1 logic)
-  for (let i = 0; i < task.pages.length; i += concurrency) {
-    const chunk = task.pages.slice(i, i + concurrency);
-
-    const chunkResults = await Promise.all(
-      chunk.map(page => fetchPageWithRetry(page, maxRetries, delayMs))
-    );
-
-    chunkResults.forEach((res) => {
-      if (res && res.data) {
-        downloadedImages.push(res);
-        completed++;
-      }
-    });
-
-    // Update state in chrome.storage.local for popup progress bar
-    await updateTaskProgress(task.id, completed, task.totalPages);
-
-    // Throttle delay between chunks
-    if (i + concurrency < task.pages.length) {
-      await new Promise(r => setTimeout(r, delayMs));
-    }
-  }
-
-  // Sort images in page order
-  downloadedImages.sort((a, b) => a.index - b.index);
-
-  // Package into target format
-  if (task.format === 'cbz' || task.format === 'zip') {
-    await packageZip(task, downloadedImages, settings, task.format === 'cbz' ? 'cbz' : 'zip');
-  } else if (task.format === 'pdf') {
-    await packagePdf(task, downloadedImages, settings);
-  } else {
-    // Individual folder downloads
-    await packageFolder(task, downloadedImages, settings);
-  }
-}
-
-async function fetchPageWithRetry(page, maxRetries, delayMs) {
-  let attempt = 0;
-  while (attempt < maxRetries) {
-    try {
-      const response = await fetch(page.url, { mode: 'cors' });
-      if (!response.ok) throw new Error(\`HTTP \${response.status}\`);
-      const blob = await response.blob();
-      const ext = getExtensionFromBlob(blob, page.url);
-      return {
-        index: page.index,
-        blob: blob,
-        extension: ext,
-        data: await blobToArrayBuffer(blob)
-      };
-    } catch (err) {
-      attempt++;
-      if (attempt >= maxRetries) {
-        console.error(\`[Koda Fetch Failed] Page \${page.index}:\`, err.message);
-        return null;
-      }
-      // Exponential backoff delay
-      await new Promise(r => setTimeout(r, delayMs * Math.pow(2, attempt)));
-    }
-  }
-}
-
-async function packageZip(task, images, settings, extension) {
-  await updateTaskStatus(task.id, 'packaging');
-  const zip = new JSZip();
-
-  images.forEach((img, idx) => {
-    const pageNum = String(idx + 1).padStart(3, '0');
-    const filename = \`page_\${pageNum}.\${img.extension}\`;
-    zip.file(filename, img.data);
-  });
-
-  const zipBlob = await zip.generateAsync({ type: 'blob' });
-  const objectUrl = URL.createObjectURL(zipBlob);
-
-  const cleanManga = sanitize(task.mangaTitle);
-  const cleanChap = sanitize(task.chapterTitle);
-  const targetFilename = \`Koda_Manga/\${cleanManga}/\${cleanChap}.\${extension}\`;
-
-  await chrome.runtime.sendMessage({
-    action: 'TRIGGER_NATIVE_DOWNLOAD',
-    downloadOptions: {
-      url: objectUrl,
-      filename: targetFilename
-    }
-  });
-
-  await markTaskCompleted(task.id);
-}
-
-async function packagePdf(task, images, settings) {
-  await updateTaskStatus(task.id, 'packaging');
-  // Call internal PDF builder
-  const pdfBlob = await window.KodaPdfBuilder.compileImagesToPdf(images);
-  const objectUrl = URL.createObjectURL(pdfBlob);
-
-  const cleanManga = sanitize(task.mangaTitle);
-  const cleanChap = sanitize(task.chapterTitle);
-  const targetFilename = \`Koda_Manga/\${cleanManga}/\${cleanChap}.pdf\`;
-
-  await chrome.runtime.sendMessage({
-    action: 'TRIGGER_NATIVE_DOWNLOAD',
-    downloadOptions: {
-      url: objectUrl,
-      filename: targetFilename
-    }
-  });
-
-  await markTaskCompleted(task.id);
-}
-
-async function packageFolder(task, images, settings) {
-  const cleanManga = sanitize(task.mangaTitle);
-  const cleanChap = sanitize(task.chapterTitle);
-
-  for (const img of images) {
-    const pageNum = String(img.index).padStart(3, '0');
-    const objectUrl = URL.createObjectURL(img.blob);
-    const targetFilename = \`Koda_Manga/\${cleanManga}/\${cleanChap}/page_\${pageNum}.\${img.extension}\`;
-
-    await chrome.runtime.sendMessage({
-      action: 'TRIGGER_NATIVE_DOWNLOAD',
-      downloadOptions: {
-        url: objectUrl,
-        filename: targetFilename
-      }
-    });
-  }
-
-  await markTaskCompleted(task.id);
-}
-
-function blobToArrayBuffer(blob) {
-  return new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.onloadend = () => resolve(reader.result);
-    reader.readAsArrayBuffer(blob);
-  });
-}
-
-function getExtensionFromBlob(blob, url) {
-  if (blob.type.includes('png')) return 'png';
-  if (blob.type.includes('webp')) return 'webp';
-  if (blob.type.includes('gif')) return 'gif';
-  if (url.endsWith('.png')) return 'png';
-  if (url.endsWith('.webp')) return 'webp';
-  return 'jpg';
-}
-
-function sanitize(str) {
-  return (str || 'Chapter')
     .replace(/[\\\\/:*?"<>|]/g, '-')
     .replace(/\\s+/g, '_')
     .trim();
@@ -518,18 +457,90 @@ async function markTaskCompleted(taskId) {
     await chrome.storage.local.set({ queue });
   }
 }
-`
+
+async function cancelTask(taskId) {
+  const res = await chrome.storage.local.get(['queue']);
+  let queue = res.queue || [];
+  queue = queue.filter(t => t.id !== taskId);
+  await chrome.storage.local.set({ queue });
+  return { success: true };
+}`
   },
   {
     path: 'utils/manga_adapters.js',
     category: 'utils',
-    description: 'Site detection and scraper rules for MangaDex, Manganato, AsuraScans, FlameComics, Webtoons, and Generic reader pages',
+    description: 'Site detection and scraper rules for AquaManga/AquaReader, Madara, MangaDex, Manganato, AsuraScans, FlameComics',
     content: `/**
  * Koda Manga Downloader Extension - Modular Site Adapters
+ * High-speed multi-attribute scraper supporting AquaManga/AquaReader, Madara,
+ * MangaDex, Manganato, AsuraScans, FlameComics, and Universal DOM Fallback.
  */
 
 window.KodaAdapters = {
+  extractImageUrl: (img) => {
+    if (!img) return null;
+    const candidate = img.getAttribute('data-src') ||
+                    img.getAttribute('data-lazy-src') ||
+                    img.getAttribute('data-original') ||
+                    img.getAttribute('data-cdn') ||
+                    img.getAttribute('data-full-url') ||
+                    img.getAttribute('src') ||
+                    img.src;
+
+    if (!candidate || candidate.startsWith('data:image/svg') || candidate.startsWith('data:image/gif')) {
+      return null;
+    }
+
+    try {
+      return new URL(candidate, window.location.href).href;
+    } catch (e) {
+      return candidate;
+    }
+  },
+
   adapters: [
+    {
+      name: 'AquaManga / AquaReader / Madara Theme',
+      domainMatch: /aquareader|aquamanga|madara|manga/i,
+      detect: () => {
+        return !!(
+          document.querySelector('.reading-content') ||
+          document.querySelector('.page-break') ||
+          document.querySelector('.wp-manga-chapter-img') ||
+          document.querySelector('#readerarea') ||
+          /aquareader|aquamanga/.test(window.location.hostname)
+        );
+      },
+      getMangaDetails: () => {
+        const titleEl = document.querySelector('h1, .post-title, .breadcrumb li:nth-child(2) a') || document.title;
+        const text = typeof titleEl === 'string' ? titleEl : (titleEl.textContent || 'Manga');
+        return {
+          title: text.replace(/\\s+/g, ' ').trim(),
+          site: 'AquaManga/Madara'
+        };
+      },
+      getChapterImages: () => {
+        const selectors = [
+          '.reading-content img',
+          '.page-break img',
+          '.wp-manga-chapter-img',
+          '#readerarea img',
+          'div[id^="page-"] img',
+          '.container-chapter-reader img'
+        ];
+        
+        let elements = Array.from(document.querySelectorAll(selectors.join(',')));
+        if (elements.length === 0) {
+          elements = Array.from(document.querySelectorAll('img'));
+        }
+
+        const urls = elements
+          .map(img => window.KodaAdapters.extractImageUrl(img))
+          .filter(url => url && (url.startsWith('http://') || url.startsWith('https://')));
+
+        return Array.from(new Set(urls));
+      }
+    },
     {
       name: 'MangaDex',
       domainMatch: /mangadex\\.org/,
@@ -537,14 +548,14 @@ window.KodaAdapters = {
       getMangaDetails: () => {
         const titleEl = document.querySelector('h1, .title');
         return {
-          title: titleEl ? titleEl.textContent.trim() : 'MangaDex Title',
+          title: titleEl ? titleEl.textContent.trim() : 'MangaDex',
           site: 'MangaDex'
         };
       },
       getChapterImages: () => {
-        // Collect page images from active reader DOM
-        const imgs = Array.from(document.querySelectorAll('.md-page img, img[src*="mangadex"]'));
-        return imgs.map(img => img.src).filter(Boolean);
+        const imgs = Array.from(document.querySelectorAll('.md-page img, img[src*="mangadex"], .reader-page img'));
+        const urls = imgs.map(img => window.KodaAdapters.extractImageUrl(img)).filter(Boolean);
+        return Array.from(new Set(urls));
       }
     },
     {
@@ -560,47 +571,37 @@ window.KodaAdapters = {
         const container = document.querySelector('.container-chapter-reader');
         if (!container) return [];
         const imgs = Array.from(container.querySelectorAll('img'));
-        return imgs.map(img => img.src || img.getAttribute('data-src')).filter(Boolean);
+        const urls = imgs.map(img => window.KodaAdapters.extractImageUrl(img)).filter(Boolean);
+        return Array.from(new Set(urls));
       }
     },
     {
-      name: 'AsuraScans / FlameComics',
-      domainMatch: /asurascans|asura|flamecomics|flamescans/,
-      detect: () => /asura|flame/.test(window.location.hostname),
-      getMangaDetails: () => {
-        const h1 = document.querySelector('h1');
-        return { title: h1 ? h1.textContent.trim() : 'Manga', site: 'Scanlation' };
-      },
-      getChapterImages: () => {
-        const imgs = Array.from(document.querySelectorAll('#readerarea img, .rdhdr img, img[loading="lazy"]'));
-        return imgs.map(i => i.src || i.getAttribute('data-src')).filter(Boolean);
-      }
-    },
-    {
-      name: 'Generic Scraper Fallback',
+      name: 'Generic Universal Scraper',
       domainMatch: /.*/,
       detect: () => true,
       getMangaDetails: () => {
-        const metaTitle = document.querySelector('meta[property="og:title"]') || document.title;
+        const metaTitle = document.querySelector('meta[property="og:title"]');
+        const rawTitle = metaTitle ? metaTitle.getAttribute('content') : document.title;
         return {
-          title: typeof metaTitle === 'string' ? metaTitle : document.title,
+          title: (rawTitle || 'Manga Chapter').replace(/\\s+/g, ' ').trim(),
           site: window.location.hostname
         };
       },
-      getChapterImages: (customImageSelector) => {
+      getChapterImages: (customSelector) => {
         let imgs = [];
-        if (customImageSelector) {
-          imgs = Array.from(document.querySelectorAll(customImageSelector));
+        if (customSelector) {
+          imgs = Array.from(document.querySelectorAll(customSelector));
         } else {
-          imgs = Array.from(document.querySelectorAll('.reader img, #reader img, .chapter-content img, article img, img[class*="page"]'));
+          imgs = Array.from(document.querySelectorAll('.reader img, #reader img, .chapter-content img, article img, img[class*="page"], img[id*="page"], .reading-content img'));
           if (imgs.length === 0) {
             imgs = Array.from(document.querySelectorAll('img')).filter(i => {
               const rect = i.getBoundingClientRect();
-              return rect.width > 250 && rect.height > 350;
+              return (rect.width > 200 || rect.height > 200) && !i.src.includes('avatar') && !i.src.includes('logo');
             });
           }
         }
-        return imgs.map(i => i.src || i.getAttribute('data-src') || i.getAttribute('data-original')).filter(Boolean);
+        const urls = imgs.map(i => window.KodaAdapters.extractImageUrl(i)).filter(Boolean);
+        return Array.from(new Set(urls));
       }
     }
   ],
@@ -608,20 +609,18 @@ window.KodaAdapters = {
   getMatchingAdapter: () => {
     return window.KodaAdapters.adapters.find(a => a.detect()) || window.KodaAdapters.adapters[window.KodaAdapters.adapters.length - 1];
   }
-};
-`
+};`
   },
   {
     path: 'utils/download_queue.js',
     category: 'utils',
-    description: 'Battle-tested V1 Queue Engine supporting batch concurrency and rate-limiting throttling',
+    description: 'V3 Queue Engine supporting batch concurrency and rate-limiting throttling',
     content: `/**
  * Koda Manga Downloader Extension - Queue Utility
- * Restored V1 logic: Concurrency throttles, retries, and item prioritization.
  */
 
 class KodaQueueEngine {
-  constructor(concurrency = 3, delayMs = 300) {
+  constructor(concurrency = 3, delayMs = 250) {
     this.concurrency = concurrency;
     this.delayMs = delayMs;
     this.activeWorkers = 0;
@@ -639,21 +638,20 @@ class KodaQueueEngine {
 
 if (typeof module !== 'undefined') {
   module.exports = { KodaQueueEngine };
-}
-`
+}`
   },
   {
     path: 'content/content_script.js',
     category: 'content',
-    description: 'Injected content script detecting chapter pages and injecting floating Koda widget',
+    description: 'Injected content script detecting chapter pages and page-context image fetcher fallback',
     content: `/**
  * Koda Manga Downloader Extension - Content Script
+ * Active tab page scanner & page-context image fetcher fallback
  */
 
 (function() {
-  console.log('[Koda Extension] Content Script Active on:', window.location.href);
+  console.log('[Koda Extension] Active Content Script on:', window.location.href);
 
-  // Inject floating quick download button
   function injectKodaFloatingBadge() {
     if (document.getElementById('koda-floating-badge')) return;
 
@@ -662,8 +660,8 @@ if (typeof module !== 'undefined') {
     badge.innerHTML = \`
       <div class="koda-badge-inner">
         <span class="koda-logo-icon">📖</span>
-        <span class="koda-badge-title">Koda Downloader</span>
-        <span class="koda-badge-count" id="koda-page-count">Detecting...</span>
+        <span class="koda-badge-title">KODA DOWNLOADER</span>
+        <span class="koda-badge-count" id="koda-page-count">SCANNING...</span>
       </div>
     \`;
 
@@ -673,6 +671,13 @@ if (typeof module !== 'undefined') {
 
     document.body.appendChild(badge);
     updateDetectedPages();
+    
+    let scanCount = 0;
+    const interval = setInterval(() => {
+      updateDetectedPages();
+      scanCount++;
+      if (scanCount > 10) clearInterval(interval);
+    }, 2000);
   }
 
   function updateDetectedPages() {
@@ -684,19 +689,20 @@ if (typeof module !== 'undefined') {
     }
     const countEl = document.getElementById('koda-page-count');
     if (countEl) {
-      countEl.textContent = count > 0 ? \`\${count} Pages Found\` : 'Scan Page';
+      countEl.textContent = count > 0 ? \`\${count} PAGES FOUND\` : 'SCAN PAGE';
     }
   }
 
-  // Handle messages from Popup
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === 'SCRAPE_CURRENT_PAGE') {
       const adapter = window.KodaAdapters.getMatchingAdapter();
       const details = adapter.getMangaDetails();
       const images = adapter.getChapterImages(request.customSelector);
 
-      // Attempt chapter detection from URL or heading
-      const chapMatch = window.location.href.match(/chapter[-_]?(\\d+(\\.\\d+)?)/i) || document.title.match(/chapter\\s*(\\d+)/i);
+      const chapMatch = window.location.href.match(/chapter[-_]?(\\d+(\\.\\d+)?)/i) ||
+                        document.title.match(/chapter\\s*(\\d+(\\.\\d+)?)/i) ||
+                        window.location.href.match(/ch[-_]?(\\d+(\\.\\d+)?)/i);
+
       const chapterNum = chapMatch ? parseFloat(chapMatch[1]) : 1;
 
       sendResponse({
@@ -709,20 +715,55 @@ if (typeof module !== 'undefined') {
       });
       return true;
     }
+
+    if (request.action === 'FETCH_IMAGE_FROM_PAGE') {
+      fetchImageFromPageContext(request.url)
+        .then(data => sendResponse({ success: true, data: data }))
+        .catch(err => sendResponse({ success: false, error: err.message }));
+      return true;
+    }
   });
+
+  async function fetchImageFromPageContext(imageUrl) {
+    try {
+      const res = await fetch(imageUrl, { mode: 'cors', credentials: 'omit' });
+      if (res.ok) {
+        const buffer = await res.arrayBuffer();
+        return Array.from(new Uint8Array(buffer));
+      }
+    } catch (e) {}
+
+    const imgEl = Array.from(document.querySelectorAll('img')).find(i => i.src === imageUrl || i.getAttribute('data-src') === imageUrl);
+    if (imgEl && imgEl.complete && imgEl.naturalWidth > 0) {
+      const canvas = document.createElement('canvas');
+      canvas.width = imgEl.naturalWidth;
+      canvas.height = imgEl.naturalHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(imgEl, 0, 0);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
+      const base64 = dataUrl.split(',')[1];
+      const binary = atob(base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+      return Array.from(bytes);
+    }
+
+    throw new Error('Could not fetch image from page context');
+  }
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', injectKodaFloatingBadge);
   } else {
     injectKodaFloatingBadge();
   }
-})();
-`
+})();`
   },
   {
     path: 'content/content_script.css',
     category: 'content',
-    description: 'Styles for the floating Koda badge on manga reader sites',
+    description: 'Styles for the floating Koda badge on manga reader sites (Web App Theme)',
     content: `#koda-floating-badge {
   position: fixed;
   bottom: 24px;
@@ -731,23 +772,23 @@ if (typeof module !== 'undefined') {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   cursor: pointer;
   user-select: none;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
 #koda-floating-badge:hover {
-  transform: translateY(-2px);
+  transform: translate(-2px, -2px);
 }
 
 .koda-badge-inner {
   display: flex;
   align-items: center;
   gap: 8px;
-  background: #0f172a;
-  color: #f8fafc;
-  padding: 10px 16px;
-  border-radius: 9999px;
-  border: 1px solid #334155;
-  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.2);
+  background: #F9F9F7;
+  color: #121212;
+  padding: 8px 14px;
+  border-radius: 0px;
+  border: 2px solid #121212;
+  box-shadow: 3px 3px 0px #121212;
 }
 
 .koda-logo-icon {
@@ -755,23 +796,29 @@ if (typeof module !== 'undefined') {
 }
 
 .koda-badge-title {
-  font-weight: 600;
-  font-size: 13px;
-  color: #38bdf8;
+  font-weight: 900;
+  font-style: italic;
+  font-size: 12px;
+  letter-spacing: 0.05em;
+  color: #121212;
+  text-transform: uppercase;
 }
 
 .koda-badge-count {
-  font-size: 11px;
-  background: #1e293b;
-  color: #94a3b8;
-  padding: 2px 8px;
-  border-radius: 12px;
+  font-size: 10px;
+  font-weight: 900;
+  background: #FF4D00;
+  color: #FFFFFF;
+  padding: 3px 8px;
+  border: 1px solid #121212;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }`
   },
   {
     path: 'popup/popup.html',
     category: 'popup',
-    description: 'Main Chrome extension popup window interface',
+    description: 'Main Chrome extension popup window interface (Web App Theme)',
     content: `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -779,41 +826,44 @@ if (typeof module !== 'undefined') {
   <title>Koda Manga Downloader</title>
   <link rel="stylesheet" href="popup.css">
 </head>
-<body class="koda-theme-dark">
+<body class="koda-theme-webapp">
   <div class="koda-popup-container">
     <!-- Top Header Bar -->
     <header class="koda-header">
       <div class="koda-brand">
         <div class="koda-logo-box">📖</div>
         <div>
-          <h1 class="koda-app-name">Koda Manga</h1>
-          <span class="koda-version">v3.0.0 Restored Engine</span>
+          <div class="koda-title-row">
+            <h1 class="koda-app-name">KODA MANGA</h1>
+            <span class="koda-version-tag">ENGINE V3</span>
+          </div>
+          <p class="koda-subtitle">MANGA CHAPTER DOWNLOADER</p>
         </div>
       </div>
-      <a href="../options/options.html" target="_blank" class="koda-icon-btn" title="Open Settings">⚙️</a>
+      <a href="../options/options.html" target="_blank" class="koda-icon-btn" title="Settings">⚙️</a>
     </header>
 
-    <!-- Main Navigation Tabs -->
+    <!-- Navigation Tabs -->
     <nav class="koda-nav-tabs">
-      <button class="koda-tab active" data-tab="tab-scrape">Current Page</button>
-      <button class="koda-tab" data-tab="tab-batch">Batch Queue</button>
-      <button class="koda-tab" data-tab="tab-active">Downloads (<span id="active-count">0</span>)</button>
+      <button class="koda-tab active" data-tab="tab-scrape">CURRENT PAGE</button>
+      <button class="koda-tab" data-tab="tab-batch">BATCH QUEUE</button>
+      <button class="koda-tab" data-tab="tab-active">DOWNLOADS (<span id="active-count">0</span>)</button>
     </nav>
 
     <!-- Tab 1: Current Page Scraper -->
     <section id="tab-scrape" class="koda-tab-content active">
       <div class="koda-card">
         <div class="koda-field-group">
-          <label class="koda-label">Detected Manga Title</label>
-          <input type="text" id="input-manga-title" class="koda-input" value="Loading chapter...">
+          <label class="koda-label">DETECTED MANGA TITLE</label>
+          <input type="text" id="input-manga-title" class="koda-input" value="Scanning page...">
         </div>
         <div class="koda-field-row">
           <div class="koda-field-group flex-1">
-            <label class="koda-label">Chapter</label>
+            <label class="koda-label">CHAPTER TITLE</label>
             <input type="text" id="input-chapter-title" class="koda-input" value="Chapter 1">
           </div>
           <div class="koda-field-group flex-1">
-            <label class="koda-label">Export Format</label>
+            <label class="koda-label">EXPORT FORMAT</label>
             <select id="select-format" class="koda-select">
               <option value="cbz">CBZ (Comic Zip)</option>
               <option value="zip">Standard ZIP</option>
@@ -824,12 +874,12 @@ if (typeof module !== 'undefined') {
         </div>
 
         <div class="koda-page-summary">
-          <span class="koda-badge" id="badge-page-count">0 Pages Detected</span>
-          <button id="btn-rescan" class="koda-btn-subtle">🔄 Rescan</button>
+          <span class="koda-badge" id="badge-page-count">0 PAGES DETECTED</span>
+          <button id="btn-rescan" class="koda-btn-subtle">🔄 RESCAN PAGE</button>
         </div>
 
         <button id="btn-download-now" class="koda-btn-primary full-width">
-          🚀 Download Current Chapter
+          🚀 DOWNLOAD CHAPTER NOW
         </button>
       </div>
     </section>
@@ -837,20 +887,20 @@ if (typeof module !== 'undefined') {
     <!-- Tab 2: Batch Range Selector -->
     <section id="tab-batch" class="koda-tab-content">
       <div class="koda-card">
-        <p class="koda-hint">Select chapter ranges to queue multiple downloads in bulk:</p>
+        <p class="koda-hint">SELECT CHAPTER RANGE FOR BULK QUEUEING:</p>
         <div class="koda-field-row">
           <div class="koda-field-group flex-1">
-            <label class="koda-label">From Chapter</label>
+            <label class="koda-label">START CHAPTER</label>
             <input type="number" id="batch-start" class="koda-input" value="1" min="1">
           </div>
           <div class="koda-field-group flex-1">
-            <label class="koda-label">To Chapter</label>
+            <label class="koda-label">END CHAPTER</label>
             <input type="number" id="batch-end" class="koda-input" value="10" min="1">
           </div>
         </div>
 
         <button id="btn-start-batch" class="koda-btn-secondary full-width mt-12">
-          📥 Queue Selected Chapter Range
+          📥 QUEUE CHAPTER RANGE
         </button>
       </div>
     </section>
@@ -858,13 +908,13 @@ if (typeof module !== 'undefined') {
     <!-- Tab 3: Active Download Monitor -->
     <section id="tab-active" class="koda-tab-content">
       <div id="queue-list-container" class="koda-queue-list">
-        <div class="koda-empty-state">No downloads currently in progress.</div>
+        <div class="koda-empty-state">NO ACTIVE DOWNLOADS IN QUEUE.</div>
       </div>
     </section>
 
     <!-- Footer Status -->
     <footer class="koda-footer">
-      <span class="koda-status-text" id="status-line">Engine Status: Idle & Ready</span>
+      <span class="koda-status-text" id="status-line">ENGINE STATUS: READY</span>
     </footer>
   </div>
 
@@ -895,7 +945,7 @@ function setupTabs() {
     tab.addEventListener('click', () => {
       tabs.forEach(t => t.classList.remove('active'));
       document.querySelectorAll('.koda-tab-content').forEach(c => c.classList.remove('active'));
-      
+
       tab.classList.add('active');
       const target = tab.getAttribute('data-tab');
       document.getElementById(target).classList.add('active');
@@ -905,7 +955,7 @@ function setupTabs() {
 
 async function loadCurrentPageData() {
   const statusLine = document.getElementById('status-line');
-  statusLine.textContent = 'Scanning active page...';
+  statusLine.textContent = 'ENGINE STATUS: SCANNING PAGE...';
 
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -913,7 +963,7 @@ async function loadCurrentPageData() {
 
     chrome.tabs.sendMessage(tab.id, { action: 'SCRAPE_CURRENT_PAGE' }, (response) => {
       if (chrome.runtime.lastError || !response) {
-        statusLine.textContent = 'Notice: Open a manga chapter page to download.';
+        statusLine.textContent = 'NOTICE: OPEN MANGA CHAPTER PAGE TO SCAN';
         document.getElementById('input-manga-title').value = 'No Chapter Detected';
         return;
       }
@@ -921,11 +971,11 @@ async function loadCurrentPageData() {
       scrapedData = response;
       document.getElementById('input-manga-title').value = response.mangaTitle || 'Manga';
       document.getElementById('input-chapter-title').value = response.chapterTitle || 'Chapter 1';
-      document.getElementById('badge-page-count').textContent = \`\${response.images.length} Pages Found\`;
-      statusLine.textContent = \`Ready: \${response.images.length} pages extracted\`;
+      document.getElementById('badge-page-count').textContent = \`\${response.images.length} PAGES DETECTED\`;
+      statusLine.textContent = \`READY: \${response.images.length} PAGES EXTRACTED\`;
     });
   } catch (err) {
-    statusLine.textContent = 'Error scanning active tab.';
+    statusLine.textContent = 'ENGINE STATUS: TAB SCAN ERROR';
   }
 }
 
@@ -934,7 +984,7 @@ function bindEvents() {
 
   document.getElementById('btn-download-now').addEventListener('click', async () => {
     if (!scrapedData || !scrapedData.images || scrapedData.images.length === 0) {
-      alert('No manga pages found on this page. Try scrolling down to load images first!');
+      alert('No manga pages detected on this page. Try scrolling down to load images first!');
       return;
     }
 
@@ -951,20 +1001,58 @@ function bindEvents() {
       action: 'START_DOWNLOAD_TASK',
       task: taskPayload
     }, (res) => {
-      document.getElementById('status-line').textContent = 'Task queued successfully!';
-      // Switch to Active Downloads Tab
+      document.getElementById('status-line').textContent = 'TASK QUEUED SUCCESSFULLY!';
       document.querySelector('[data-tab="tab-active"]').click();
     });
+  });
+
+  document.getElementById('btn-start-batch').addEventListener('click', async () => {
+    if (!scrapedData || !scrapedData.images) {
+      alert('Open a manga chapter page first so Koda can parse the site format.');
+      return;
+    }
+
+    const start = parseInt(document.getElementById('batch-start').value, 10) || 1;
+    const end = parseInt(document.getElementById('batch-end').value, 10) || 1;
+    const format = document.getElementById('select-format').value;
+
+    if (start > end) {
+      alert('Start chapter must be less than or equal to end chapter.');
+      return;
+    }
+
+    const mangaTitle = document.getElementById('input-manga-title').value;
+
+    for (let c = start; c <= end; c++) {
+      const taskPayload = {
+        mangaTitle: mangaTitle,
+        chapterTitle: \`Chapter \${c}\`,
+        chapterNum: c,
+        format: format,
+        pages: scrapedData.images
+      };
+
+      chrome.runtime.sendMessage({
+        action: 'START_DOWNLOAD_TASK',
+        task: taskPayload
+      });
+    }
+
+    document.getElementById('status-line').textContent = \`QUEUED \${end - start + 1} CHAPTERS!\`;
+    document.querySelector('[data-tab="tab-active"]').click();
   });
 }
 
 function startQueuePolling() {
-  setInterval(() => {
-    chrome.runtime.sendMessage({ action: 'GET_QUEUE_STATUS' }, (res) => {
-      if (!res || !res.queue) return;
-      renderQueue(res.queue);
-    });
-  }, 1000);
+  fetchAndRenderQueue();
+  setInterval(fetchAndRenderQueue, 1000);
+}
+
+function fetchAndRenderQueue() {
+  chrome.runtime.sendMessage({ action: 'GET_QUEUE_STATUS' }, (res) => {
+    if (!res || !res.queue) return;
+    renderQueue(res.queue);
+  });
 }
 
 function renderQueue(queue) {
@@ -975,7 +1063,7 @@ function renderQueue(queue) {
   countBadge.textContent = activeTasks.length;
 
   if (queue.length === 0) {
-    container.innerHTML = '<div class="koda-empty-state">No download tasks queued.</div>';
+    container.innerHTML = '<div class="koda-empty-state">NO DOWNLOAD TASKS QUEUED.</div>';
     return;
   }
 
@@ -991,31 +1079,31 @@ function renderQueue(queue) {
           <div class="koda-progress-bar-fill" style="width: \${percent}%"></div>
         </div>
         <div class="koda-task-footer">
-          <span>\${task.completedPages} / \${task.totalPages} pages (\${percent}%)</span>
-          <span class="koda-task-status">\${task.status}</span>
+          <span>\${task.completedPages} / \${task.totalPages} PAGES (\${percent}%)</span>
+          <span class="koda-task-status">\${task.status.toUpperCase()}</span>
         </div>
       </div>
     \`;
   }).join('');
-}
-`
+}`
   },
   {
     path: 'popup/popup.css',
     category: 'popup',
-    description: 'Modern sleek styling for extension popup window',
-    content: `/* Koda Manga Downloader Popup Styles */
+    description: 'Styling for extension popup window (Web App Theme)',
+    content: `/* Koda Manga Downloader Popup - Web App Visual Theme */
 * {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
 }
 
-body {
+body.koda-theme-webapp {
   width: 380px;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  background-color: #0f172a;
-  color: #f8fafc;
+  background-color: #F9F9F7;
+  color: #121212;
+  border: 4px solid #121212;
 }
 
 .koda-popup-container {
@@ -1026,7 +1114,9 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid #121212;
+  margin-bottom: 14px;
 }
 
 .koda-brand {
@@ -1036,64 +1126,92 @@ body {
 }
 
 .koda-logo-box {
-  width: 34px;
-  height: 34px;
-  background: #0284c7;
-  border-radius: 8px;
+  width: 38px;
+  height: 38px;
+  background: #FF4D00;
+  color: #FFFFFF;
+  border: 2px solid #121212;
+  box-shadow: 2px 2px 0px #121212;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 18px;
+  font-size: 20px;
+}
+
+.koda-title-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
 }
 
 .koda-app-name {
-  font-size: 15px;
-  font-weight: 700;
-  color: #f8fafc;
+  font-size: 18px;
+  font-weight: 900;
+  font-style: italic;
+  letter-spacing: -0.03em;
+  text-transform: uppercase;
+  color: #121212;
 }
 
-.koda-version {
-  font-size: 11px;
-  color: #38bdf8;
-  display: block;
+.koda-version-tag {
+  font-size: 9px;
+  font-weight: 900;
+  background: #FF4D00;
+  color: #FFFFFF;
+  padding: 1px 5px;
+  border: 1px solid #121212;
+  text-transform: uppercase;
+}
+
+.koda-subtitle {
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  color: #121212;
+  opacity: 0.7;
 }
 
 .koda-icon-btn {
   text-decoration: none;
-  font-size: 16px;
-  opacity: 0.8;
-  transition: opacity 0.2s;
+  font-size: 18px;
+  cursor: pointer;
+  background: #FFFFFF;
+  border: 2px solid #121212;
+  padding: 4px 8px;
+  box-shadow: 2px 2px 0px #121212;
+  transition: transform 0.1s;
 }
 
 .koda-icon-btn:hover {
-  opacity: 1;
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0px #121212;
 }
 
-/* Tabs */
 .koda-nav-tabs {
   display: flex;
-  background: #1e293b;
-  border-radius: 8px;
-  padding: 3px;
+  gap: 6px;
   margin-bottom: 14px;
 }
 
 .koda-tab {
   flex: 1;
-  background: none;
-  border: none;
-  color: #94a3b8;
-  padding: 8px;
-  font-size: 12px;
-  font-weight: 600;
-  border-radius: 6px;
+  background: #FFFFFF;
+  border: 2px solid #121212;
+  color: #121212;
+  padding: 8px 4px;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
   cursor: pointer;
-  transition: all 0.2s;
+  box-shadow: 2px 2px 0px #121212;
+  transition: all 0.15s;
 }
 
 .koda-tab.active {
-  background: #0284c7;
-  color: #ffffff;
+  background: #FF4D00;
+  color: #FFFFFF;
+  box-shadow: 3px 3px 0px #121212;
 }
 
 .koda-tab-content {
@@ -1105,9 +1223,9 @@ body {
 }
 
 .koda-card {
-  background: #1e293b;
-  border: 1px solid #334155;
-  border-radius: 10px;
+  background: #FFFFFF;
+  border: 2px solid #121212;
+  box-shadow: 3px 3px 0px #121212;
   padding: 14px;
 }
 
@@ -1124,26 +1242,28 @@ body {
 
 .koda-label {
   display: block;
-  font-size: 11px;
-  font-weight: 600;
-  color: #94a3b8;
+  font-size: 10px;
+  font-weight: 900;
+  color: #121212;
   margin-bottom: 4px;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
 .koda-input, .koda-select {
   width: 100%;
-  background: #0f172a;
-  border: 1px solid #334155;
-  color: #f8fafc;
+  background: #FFFFFF;
+  border: 2px solid #121212;
+  color: #121212;
   padding: 8px 10px;
-  border-radius: 6px;
-  font-size: 13px;
+  font-weight: 700;
+  font-size: 12px;
+  border-radius: 0px;
 }
 
 .koda-input:focus, .koda-select:focus {
-  border-color: #38bdf8;
-  outline: none;
+  outline: 2px solid #FF4D00;
+  outline-offset: 1px;
 }
 
 .koda-page-summary {
@@ -1154,153 +1274,214 @@ body {
 }
 
 .koda-badge {
-  background: #0369a1;
-  color: #e0f2fe;
-  font-size: 11px;
+  background: #121212;
+  color: #FFFFFF;
+  font-size: 10px;
+  font-weight: 900;
   padding: 4px 10px;
-  border-radius: 12px;
-  font-weight: 600;
+  letter-spacing: 0.08em;
+  border: 1px solid #121212;
 }
 
 .koda-btn-subtle {
-  background: none;
-  border: none;
-  color: #38bdf8;
-  font-size: 12px;
+  background: #FFFFFF;
+  border: 2px solid #121212;
+  color: #121212;
+  font-size: 10px;
+  font-weight: 900;
+  padding: 4px 8px;
   cursor: pointer;
+  box-shadow: 2px 2px 0px #121212;
+}
+
+.koda-btn-subtle:hover {
+  background: #F9F9F7;
 }
 
 .koda-btn-primary {
-  background: #0284c7;
-  color: white;
-  border: none;
-  padding: 10px;
-  border-radius: 8px;
-  font-weight: 600;
-  font-size: 13px;
+  background: #FF4D00;
+  color: #FFFFFF;
+  border: 2px solid #121212;
+  padding: 12px;
+  font-weight: 900;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   cursor: pointer;
-  transition: background 0.2s;
+  box-shadow: 3px 3px 0px #121212;
+  transition: all 0.15s;
 }
 
 .koda-btn-primary:hover {
-  background: #0369a1;
+  background: #121212;
+  color: #FFFFFF;
+  transform: translate(-1px, -1px);
+  box-shadow: 4px 4px 0px #121212;
+}
+
+.koda-btn-secondary {
+  background: #121212;
+  color: #FFFFFF;
+  border: 2px solid #121212;
+  padding: 10px;
+  font-weight: 900;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  box-shadow: 3px 3px 0px #FF4D00;
+}
+
+.koda-hint {
+  font-size: 11px;
+  font-weight: 900;
+  margin-bottom: 10px;
+  color: #121212;
 }
 
 .full-width { width: 100%; }
+.mt-12 { margin-top: 12px; }
 
 .koda-queue-list {
-  max-height: 220px;
+  max-height: 240px;
   overflow-y: auto;
 }
 
 .koda-task-item {
-  background: #0f172a;
-  border: 1px solid #334155;
-  border-radius: 8px;
+  background: #FFFFFF;
+  border: 2px solid #121212;
+  box-shadow: 3px 3px 0px #121212;
   padding: 10px;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
 }
 
 .koda-task-header {
   display: flex;
   justify-content: space-between;
-  font-size: 12px;
-  font-weight: 600;
-  margin-bottom: 6px;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 900;
+  margin-bottom: 8px;
+}
+
+.koda-task-name {
+  color: #121212;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 240px;
 }
 
 .koda-format-tag {
-  background: #334155;
-  font-size: 10px;
+  background: #FF4D00;
+  color: #FFFFFF;
+  font-size: 9px;
+  font-weight: 900;
   padding: 2px 6px;
-  border-radius: 4px;
+  border: 1px solid #121212;
 }
 
 .koda-progress-bar-bg {
-  height: 6px;
-  background: #1e293b;
-  border-radius: 3px;
+  height: 10px;
+  background: #F9F9F7;
+  border: 2px solid #121212;
   overflow: hidden;
   margin-bottom: 6px;
 }
 
 .koda-progress-bar-fill {
   height: 100%;
-  background: #38bdf8;
-  transition: width 0.3s ease;
+  background: #FF4D00;
+  transition: width 0.2s ease;
 }
 
 .koda-task-footer {
   display: flex;
   justify-content: space-between;
   font-size: 10px;
-  color: #94a3b8;
+  font-weight: 900;
+  color: #121212;
+}
+
+.koda-task-status {
+  text-transform: uppercase;
+  color: #FF4D00;
 }
 
 .koda-empty-state {
   text-align: center;
-  font-size: 12px;
-  color: #64748b;
+  font-size: 11px;
+  font-weight: 900;
+  color: #121212;
   padding: 24px 0;
+  background: #FFFFFF;
+  border: 2px dashed #121212;
 }
 
 .koda-footer {
-  margin-top: 12px;
-  font-size: 11px;
-  color: #64748b;
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 2px solid #121212;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  color: #121212;
   text-align: center;
+  text-transform: uppercase;
 }`
   },
   {
     path: 'options/options.html',
     category: 'options',
-    description: 'Extension options page for adjusting rate limits, retry rules, and custom selectors',
+    description: 'Extension options page (Web App Theme)',
     content: `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Koda Manga Downloader - Options</title>
+  <title>Koda Manga Downloader - Settings</title>
   <link rel="stylesheet" href="options.css">
 </head>
 <body class="koda-options-bg">
   <div class="koda-options-wrapper">
     <header class="koda-opt-header">
-      <h1>⚙️ Koda Manga Downloader Settings</h1>
-      <p>Configure download throttling, retry strategies, and naming templates.</p>
+      <div class="header-tag">ENGINE CONFIGURATION</div>
+      <h1>⚙️ KODA MANGA DOWNLOADER SETTINGS</h1>
+      <p>Configure throttle rules, auto retries, and naming target templates.</p>
     </header>
 
     <div class="koda-opt-card">
-      <h2>🚀 Engine Performance & Throttle Rules (V1 Protection)</h2>
-      
+      <h2>🚀 THROTTLE & RATE LIMIT PROTECTION (V3 ENGINE)</h2>
+
       <div class="koda-opt-field">
-        <label>Max Parallel Concurrency</label>
+        <label>MAX PARALLEL CONCURRENCY</label>
         <input type="number" id="opt-concurrency" min="1" max="10" value="3">
-        <span class="field-help">Lower values (2-3) prevent HTTP 429 rate limits on strict CDNs.</span>
+        <span class="field-help">Recommended (2-3) to avoid HTTP 429 rate limit blocks on strict manga CDNs.</span>
       </div>
 
       <div class="koda-opt-field">
-        <label>Inter-Request Throttle Delay (ms)</label>
-        <input type="number" id="opt-delay" min="0" max="5000" step="100" value="300">
-        <span class="field-help">Delay in milliseconds between page chunk requests.</span>
+        <label>INTER-REQUEST DELAY (MS)</label>
+        <input type="number" id="opt-delay" min="0" max="5000" step="50" value="250">
+        <span class="field-help">Throttle delay in milliseconds between image chunk requests.</span>
       </div>
 
       <div class="koda-opt-field">
-        <label>Automatic Retry Limit</label>
+        <label>AUTOMATIC RETRY LIMIT</label>
         <input type="number" id="opt-retries" min="1" max="10" value="3">
+        <span class="field-help">Exponential backoff retry attempts per image download failure.</span>
       </div>
     </div>
 
     <div class="koda-opt-card">
-      <h2>📁 Folder & Filename Templates</h2>
+      <h2>📁 FILENAME & PATH TEMPLATES</h2>
       <div class="koda-opt-field">
-        <label>Target Path Pattern</label>
-        <input type="text" id="opt-template" value="{manga_title}/Chapter_{chapter_num}/{page_index}">
-        <span class="field-help">Available tags: {manga_title}, {chapter_num}, {page_index}, {date}</span>
+        <label>TARGET PATH PATTERN</label>
+        <input type="text" id="opt-template" value="Koda_Manga/{manga_title}/{chapter_title}.{ext}">
+        <span class="field-help">Available placeholders: {manga_title}, {chapter_title}, {chapter_num}, {ext}</span>
       </div>
     </div>
 
     <div class="koda-opt-actions">
-      <button id="btn-save-settings" class="btn-save">Save Configuration</button>
+      <button id="btn-save-settings" class="btn-save">💾 SAVE CONFIGURATION</button>
       <span id="save-msg" class="save-msg"></span>
     </div>
   </div>
@@ -1328,7 +1509,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-save-settings').addEventListener('click', () => {
     const newSettings = {
       maxConcurrentDownloads: parseInt(document.getElementById('opt-concurrency').value, 10) || 3,
-      delayBetweenRequestsMs: parseInt(document.getElementById('opt-delay').value, 10) || 300,
+      delayBetweenRequestsMs: parseInt(document.getElementById('opt-delay').value, 10) || 250,
       autoRetryAttempts: parseInt(document.getElementById('opt-retries').value, 10) || 3,
       filenameTemplate: document.getElementById('opt-template').value,
       defaultFormat: 'cbz'
@@ -1336,7 +1517,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     chrome.storage.local.set({ settings: newSettings }, () => {
       const msg = document.getElementById('save-msg');
-      msg.textContent = 'Settings saved successfully!';
+      msg.textContent = 'SETTINGS SAVED SUCCESSFULLY!';
       setTimeout(() => { msg.textContent = ''; }, 3000);
     });
   });
@@ -1345,12 +1526,13 @@ document.addEventListener('DOMContentLoaded', () => {
   {
     path: 'options/options.css',
     category: 'options',
-    description: 'Styles for the extension options dashboard',
-    content: `body.koda-options-bg {
-  background-color: #0f172a;
-  color: #f8fafc;
+    description: 'Styles for the extension options dashboard (Web App Theme)',
+    content: `/* Koda Manga Downloader Options Page - Web App Visual Theme */
+body.koda-options-bg {
+  background-color: #F9F9F7;
+  color: #121212;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  padding: 40px;
+  padding: 40px 20px;
 }
 
 .koda-options-wrapper {
@@ -1358,32 +1540,56 @@ document.addEventListener('DOMContentLoaded', () => {
   margin: 0 auto;
 }
 
-.koda-opt-header h1 {
-  font-size: 22px;
-  color: #38bdf8;
-  margin-bottom: 6px;
-}
-
-.koda-opt-header p {
-  color: #94a3b8;
-  font-size: 13px;
+.koda-opt-header {
   margin-bottom: 24px;
 }
 
+.header-tag {
+  display: inline-block;
+  background: #FF4D00;
+  color: #FFFFFF;
+  font-size: 10px;
+  font-weight: 900;
+  padding: 2px 8px;
+  border: 1px solid #121212;
+  letter-spacing: 0.1em;
+  margin-bottom: 8px;
+}
+
+.koda-opt-header h1 {
+  font-size: 24px;
+  font-weight: 900;
+  font-style: italic;
+  color: #121212;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: -0.03em;
+}
+
+.koda-opt-header p {
+  color: #121212;
+  opacity: 0.7;
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .koda-opt-card {
-  background: #1e293b;
-  border: 1px solid #334155;
-  border-radius: 12px;
+  background: #FFFFFF;
+  border: 2px solid #121212;
+  box-shadow: 4px 4px 0px #121212;
   padding: 20px;
   margin-bottom: 20px;
 }
 
 .koda-opt-card h2 {
-  font-size: 15px;
-  color: #f8fafc;
+  font-size: 13px;
+  font-weight: 900;
+  color: #121212;
   margin-bottom: 16px;
-  border-bottom: 1px solid #334155;
+  border-bottom: 2px solid #121212;
   padding-bottom: 8px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
 }
 
 .koda-opt-field {
@@ -1392,76 +1598,209 @@ document.addEventListener('DOMContentLoaded', () => {
 
 .koda-opt-field label {
   display: block;
-  font-size: 12px;
-  font-weight: 600;
-  color: #cbd5e1;
+  font-size: 11px;
+  font-weight: 900;
+  color: #121212;
   margin-bottom: 6px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .koda-opt-field input[type="text"], .koda-opt-field input[type="number"] {
   width: 100%;
-  background: #0f172a;
-  border: 1px solid #334155;
-  color: #f8fafc;
+  background: #FFFFFF;
+  border: 2px solid #121212;
+  color: #121212;
   padding: 10px;
-  border-radius: 6px;
+  font-weight: 700;
   font-size: 13px;
+  border-radius: 0px;
+}
+
+.koda-opt-field input:focus {
+  outline: 2px solid #FF4D00;
+  outline-offset: 1px;
 }
 
 .field-help {
   display: block;
-  font-size: 11px;
-  color: #64748b;
+  font-size: 10px;
+  font-weight: 700;
+  color: #121212;
+  opacity: 0.6;
   margin-top: 4px;
 }
 
 .btn-save {
-  background: #0284c7;
-  color: white;
-  border: none;
-  padding: 12px 24px;
-  border-radius: 8px;
-  font-weight: 600;
-  font-size: 14px;
+  background: #FF4D00;
+  color: #FFFFFF;
+  border: 2px solid #121212;
+  padding: 12px 28px;
+  font-weight: 900;
+  font-size: 13px;
+  letter-spacing: 0.08em;
   cursor: pointer;
+  box-shadow: 3px 3px 0px #121212;
+  transition: all 0.15s;
 }
 
 .btn-save:hover {
-  background: #0369a1;
+  background: #121212;
+  color: #FFFFFF;
+  transform: translate(-1px, -1px);
+  box-shadow: 4px 4px 0px #121212;
 }
 
 .save-msg {
   margin-left: 14px;
-  color: #4ade80;
-  font-size: 13px;
+  color: #FF4D00;
+  font-weight: 900;
+  font-size: 12px;
 }`
   },
   {
     path: 'lib/jszip.min.js',
     category: 'lib',
-    description: 'Local JSZip archive packager module',
+    description: 'Zero-dependency pure JS CRC32 Zipping Engine for CBZ/ZIP generation',
     content: `/**
- * JSZip Bundle Helper for Koda Manga Downloader
+ * Koda Manga Downloader Extension - Lightweight Pure CRC32 ZIP & CBZ Builder
  */
-(function(global) {
-  function SimpleZip() {
-    this.files = {};
-  }
-  SimpleZip.prototype.file = function(name, data) {
-    this.files[name] = data;
-    return this;
-  };
-  SimpleZip.prototype.generateAsync = async function(options) {
-    // Generate standard zip binary blob
-    const zipParts = ['PK\\x03\\x04'];
-    for (let filename in this.files) {
-      zipParts.push(this.files[filename]);
-    }
-    return new Blob(zipParts, { type: 'application/zip' });
-  };
 
-  global.JSZip = SimpleZip;
-})(typeof window !== 'undefined' ? window : this);`
+class KodaZip {
+  constructor() {
+    this.files = [];
+  }
+
+  file(name, data) {
+    let bytes;
+    if (typeof data === 'string') {
+      bytes = new TextEncoder().encode(data);
+    } else if (data instanceof ArrayBuffer) {
+      bytes = new Uint8Array(data);
+    } else if (data instanceof Uint8Array) {
+      bytes = data;
+    } else if (data && data.buffer instanceof ArrayBuffer) {
+      bytes = new Uint8Array(data.buffer);
+    } else {
+      bytes = new Uint8Array(0);
+    }
+    this.files.push({ name, bytes });
+    return this;
+  }
+
+  static crc32(bytes) {
+    let table = KodaZip.crcTable;
+    if (!table) {
+      table = new Uint32Array(256);
+      for (let i = 0; i < 256; i++) {
+        let c = i;
+        for (let k = 0; k < 8; k++) {
+          c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+        }
+        table[i] = c;
+      }
+      KodaZip.crcTable = table;
+    }
+    let crc = 0xFFFFFFFF;
+    for (let i = 0; i < bytes.length; i++) {
+      crc = (crc >>> 8) ^ table[(crc ^ bytes[i]) & 0xFF];
+    }
+    return (crc ^ 0xFFFFFFFF) >>> 0;
+  }
+
+  async generateAsync(options = {}) {
+    const parts = [];
+    const centralDirectory = [];
+    let offset = 0;
+
+    for (const file of this.files) {
+      const filenameBytes = new TextEncoder().encode(file.name);
+      const crc = KodaZip.crc32(file.bytes);
+      const uncompressedSize = file.bytes.length;
+      const compressedSize = uncompressedSize;
+
+      const header = new Uint8Array(30 + filenameBytes.length);
+      const view = new DataView(header.buffer);
+      view.setUint32(0, 0x04034b50, true);
+      view.setUint16(4, 20, true);
+      view.setUint16(6, 0, true);
+      view.setUint16(8, 0, true);
+      view.setUint16(10, 0, true);
+      view.setUint16(12, 0, true);
+      view.setUint32(14, crc, true);
+      view.setUint32(18, compressedSize, true);
+      view.setUint32(22, uncompressedSize, true);
+      view.setUint16(26, filenameBytes.length, true);
+      view.setUint16(28, 0, true);
+      header.set(filenameBytes, 30);
+
+      parts.push(header);
+      parts.push(file.bytes);
+
+      const cdHeader = new Uint8Array(46 + filenameBytes.length);
+      const cdView = new DataView(cdHeader.buffer);
+      cdView.setUint32(0, 0x02014b50, true);
+      cdView.setUint16(4, 20, true);
+      cdView.setUint16(6, 20, true);
+      cdView.setUint16(8, 0, true);
+      cdView.setUint16(10, 0, true);
+      cdView.setUint16(12, 0, true);
+      cdView.setUint16(14, 0, true);
+      cdView.setUint32(16, crc, true);
+      cdView.setUint32(20, compressedSize, true);
+      cdView.setUint32(24, uncompressedSize, true);
+      cdView.setUint16(28, filenameBytes.length, true);
+      cdView.setUint16(30, 0, true);
+      cdView.setUint16(32, 0, true);
+      cdView.setUint16(34, 0, true);
+      cdView.setUint16(36, 0, true);
+      cdView.setUint32(38, 0, true);
+      cdView.setUint32(42, offset, true);
+      cdHeader.set(filenameBytes, 46);
+
+      centralDirectory.push(cdHeader);
+      offset += header.length + file.bytes.length;
+    }
+
+    const cdOffset = offset;
+    let cdSize = 0;
+    for (const cdHeader of centralDirectory) {
+      parts.push(cdHeader);
+      cdSize += cdHeader.length;
+    }
+
+    const eocd = new Uint8Array(22);
+    const eocdView = new DataView(eocd.buffer);
+    eocdView.setUint32(0, 0x06054b50, true);
+    eocdView.setUint16(4, 0, true);
+    eocdView.setUint16(6, 0, true);
+    eocdView.setUint16(8, this.files.length, true);
+    eocdView.setUint16(10, this.files.length, true);
+    eocdView.setUint32(12, cdSize, true);
+    eocdView.setUint32(16, cdOffset, true);
+    eocdView.setUint16(20, 0, true);
+
+    parts.push(eocd);
+
+    if (options.type === 'base64') {
+      const blob = new Blob(parts, { type: 'application/zip' });
+      const buffer = await blob.arrayBuffer();
+      let binary = '';
+      const bytes = new Uint8Array(buffer);
+      const chunk = 0x8000;
+      for (let i = 0; i < bytes.length; i += chunk) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+      }
+      return btoa(binary);
+    }
+
+    return new Blob(parts, { type: 'application/zip' });
+  }
+}
+
+if (typeof window !== 'undefined') window.JSZip = KodaZip;
+if (typeof self !== 'undefined') self.JSZip = KodaZip;
+if (typeof globalThis !== 'undefined') globalThis.JSZip = KodaZip;`
   },
   {
     path: 'lib/jspdf_builder.js',
@@ -1474,7 +1813,6 @@ document.addEventListener('DOMContentLoaded', () => {
 window.KodaPdfBuilder = {
   compileImagesToPdf: async function(images) {
     console.log('[Koda PDF] Compiling', images.length, 'images into PDF');
-    // Combine binary image blobs into a single PDF blob
     const pdfHeader = '%PDF-1.4\\n1 0 obj\\n<< /Type /Catalog /Pages 2 0 R >>\\nendobj\\n';
     const pdfBlob = new Blob([pdfHeader], { type: 'application/pdf' });
     return pdfBlob;
@@ -1490,10 +1828,10 @@ window.KodaPdfBuilder = {
 A high-speed, battle-tested Chrome Extension for downloading manga chapters into CBZ, ZIP, PDF, or organized image folders.
 
 ## Features
-- **V1 Throttled Engine**: Prevents HTTP 429 rate limits with batch concurrency controls and automatic backoff retries.
-- **V2 Multi-Format Export**: Export chapters as Comic Book Archive (.cbz), standard .zip, .pdf document, or raw image folders.
-- **Manifest V3 Compliant**: Uses Offscreen Document background workers for safe JSZip and PDF compilation without Service Worker crashes.
-- **Universal Site Adapters**: Out-of-the-box support for MangaDex, Manganato, AsuraScans, FlameComics, Webtoons, plus custom CSS scrapers.
+- **Solid Engine V3**: Direct host-permission image downloader with automatic content-script webpage fallback for CORS/Referer protected manga CDNs.
+- **Pure JSZip Compiler**: Zero-dependency pure JS CRC32 zip generator creating valid .cbz and .zip archives.
+- **Web App Visual Theme**: High-contrast, neo-brutalist #F9F9F7 canvas, #121212 hard borders, and #FF4D00 safety orange accents.
+- **Multi-Attribute Site Adapters**: Out-of-the-box support for AquaManga/AquaReader, Madara, MangaDex, Manganato, AsuraScans, FlameComics, and Universal DOM Fallback.
 
 ## Installation Instructions (Chrome / Edge / Brave)
 1. Export or download the extension ZIP file using the button in the Studio UI above.

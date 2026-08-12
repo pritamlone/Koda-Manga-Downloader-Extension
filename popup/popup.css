@@ -1,0 +1,341 @@
+/* Koda Manga Downloader Popup - Web App Visual Theme */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body.koda-theme-webapp {
+  width: 380px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background-color: #F9F9F7;
+  color: #121212;
+  border: 4px solid #121212;
+}
+
+.koda-popup-container {
+  padding: 16px;
+}
+
+.koda-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 12px;
+  border-bottom: 2px solid #121212;
+  margin-bottom: 14px;
+}
+
+.koda-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.koda-logo-box {
+  width: 38px;
+  height: 38px;
+  background: #FF4D00;
+  color: #FFFFFF;
+  border: 2px solid #121212;
+  box-shadow: 2px 2px 0px #121212;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+}
+
+.koda-title-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.koda-app-name {
+  font-size: 18px;
+  font-weight: 900;
+  font-style: italic;
+  letter-spacing: -0.03em;
+  text-transform: uppercase;
+  color: #121212;
+}
+
+.koda-version-tag {
+  font-size: 9px;
+  font-weight: 900;
+  background: #FF4D00;
+  color: #FFFFFF;
+  padding: 1px 5px;
+  border: 1px solid #121212;
+  text-transform: uppercase;
+}
+
+.koda-subtitle {
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  color: #121212;
+  opacity: 0.7;
+}
+
+.koda-icon-btn {
+  text-decoration: none;
+  font-size: 18px;
+  cursor: pointer;
+  background: #FFFFFF;
+  border: 2px solid #121212;
+  padding: 4px 8px;
+  box-shadow: 2px 2px 0px #121212;
+  transition: transform 0.1s;
+}
+
+.koda-icon-btn:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0px #121212;
+}
+
+/* Tabs */
+.koda-nav-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.koda-tab {
+  flex: 1;
+  background: #FFFFFF;
+  border: 2px solid #121212;
+  color: #121212;
+  padding: 8px 4px;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  cursor: pointer;
+  box-shadow: 2px 2px 0px #121212;
+  transition: all 0.15s;
+}
+
+.koda-tab.active {
+  background: #FF4D00;
+  color: #FFFFFF;
+  box-shadow: 3px 3px 0px #121212;
+}
+
+.koda-tab-content {
+  display: none;
+}
+
+.koda-tab-content.active {
+  display: block;
+}
+
+/* Cards */
+.koda-card {
+  background: #FFFFFF;
+  border: 2px solid #121212;
+  box-shadow: 3px 3px 0px #121212;
+  padding: 14px;
+}
+
+.koda-field-group {
+  margin-bottom: 12px;
+}
+
+.koda-field-row {
+  display: flex;
+  gap: 10px;
+}
+
+.flex-1 { flex: 1; }
+
+.koda-label {
+  display: block;
+  font-size: 10px;
+  font-weight: 900;
+  color: #121212;
+  margin-bottom: 4px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.koda-input, .koda-select {
+  width: 100%;
+  background: #FFFFFF;
+  border: 2px solid #121212;
+  color: #121212;
+  padding: 8px 10px;
+  font-weight: 700;
+  font-size: 12px;
+  border-radius: 0px;
+}
+
+.koda-input:focus, .koda-select:focus {
+  outline: 2px solid #FF4D00;
+  outline-offset: 1px;
+}
+
+.koda-page-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 12px 0;
+}
+
+.koda-badge {
+  background: #121212;
+  color: #FFFFFF;
+  font-size: 10px;
+  font-weight: 900;
+  padding: 4px 10px;
+  letter-spacing: 0.08em;
+  border: 1px solid #121212;
+}
+
+.koda-btn-subtle {
+  background: #FFFFFF;
+  border: 2px solid #121212;
+  color: #121212;
+  font-size: 10px;
+  font-weight: 900;
+  padding: 4px 8px;
+  cursor: pointer;
+  box-shadow: 2px 2px 0px #121212;
+}
+
+.koda-btn-subtle:hover {
+  background: #F9F9F7;
+}
+
+.koda-btn-primary {
+  background: #FF4D00;
+  color: #FFFFFF;
+  border: 2px solid #121212;
+  padding: 12px;
+  font-weight: 900;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  box-shadow: 3px 3px 0px #121212;
+  transition: all 0.15s;
+}
+
+.koda-btn-primary:hover {
+  background: #121212;
+  color: #FFFFFF;
+  transform: translate(-1px, -1px);
+  box-shadow: 4px 4px 0px #121212;
+}
+
+.koda-btn-secondary {
+  background: #121212;
+  color: #FFFFFF;
+  border: 2px solid #121212;
+  padding: 10px;
+  font-weight: 900;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  box-shadow: 3px 3px 0px #FF4D00;
+}
+
+.koda-hint {
+  font-size: 11px;
+  font-weight: 900;
+  margin-bottom: 10px;
+  color: #121212;
+}
+
+.full-width { width: 100%; }
+.mt-12 { margin-top: 12px; }
+
+/* Active Downloads Queue List */
+.koda-queue-list {
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.koda-task-item {
+  background: #FFFFFF;
+  border: 2px solid #121212;
+  box-shadow: 3px 3px 0px #121212;
+  padding: 10px;
+  margin-bottom: 10px;
+}
+
+.koda-task-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 900;
+  margin-bottom: 8px;
+}
+
+.koda-task-name {
+  color: #121212;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 240px;
+}
+
+.koda-format-tag {
+  background: #FF4D00;
+  color: #FFFFFF;
+  font-size: 9px;
+  font-weight: 900;
+  padding: 2px 6px;
+  border: 1px solid #121212;
+}
+
+.koda-progress-bar-bg {
+  height: 10px;
+  background: #F9F9F7;
+  border: 2px solid #121212;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+
+.koda-progress-bar-fill {
+  height: 100%;
+  background: #FF4D00;
+  transition: width 0.2s ease;
+}
+
+.koda-task-footer {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  font-weight: 900;
+  color: #121212;
+}
+
+.koda-task-status {
+  text-transform: uppercase;
+  color: #FF4D00;
+}
+
+.koda-empty-state {
+  text-align: center;
+  font-size: 11px;
+  font-weight: 900;
+  color: #121212;
+  padding: 24px 0;
+  background: #FFFFFF;
+  border: 2px dashed #121212;
+}
+
+.koda-footer {
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 2px solid #121212;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  color: #121212;
+  text-align: center;
+  text-transform: uppercase;
+}

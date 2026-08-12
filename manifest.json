@@ -1,0 +1,58 @@
+{
+  "manifest_version": 3,
+  "name": "Koda Manga Downloader Extension",
+  "version": "3.0.0",
+  "description": "High-speed, reliable manga chapter downloader. Export chapters into CBZ, ZIP, PDF, or folder formats with rate-limit protection.",
+  "author": "Koda Tools",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_title": "Koda Manga Downloader"
+  },
+  "options_page": "options/options.html",
+  "background": {
+    "service_worker": "background/service-worker.js"
+  },
+  "permissions": [
+    "activeTab",
+    "downloads",
+    "storage",
+    "offscreen",
+    "scripting",
+    "alarms"
+  ],
+  "host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "js": [
+        "utils/manga_adapters.js",
+        "content/content_script.js"
+      ],
+      "css": [
+        "content/content_script.css"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "lib/jszip.min.js",
+        "lib/jspdf_builder.js",
+        "icons/*"
+      ],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}
