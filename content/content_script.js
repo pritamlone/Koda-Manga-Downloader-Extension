@@ -87,6 +87,7 @@
     }, 2000);
   }
 
+  let lastScannedCount = 0;
   function updateDetectedPages() {
     const adapter = window.KodaAdapters ? window.KodaAdapters.getMatchingAdapter() : null;
     let count = 0;
@@ -97,6 +98,22 @@
     const countEl = document.getElementById('koda-page-count');
     if (countEl) {
       countEl.textContent = count > 0 ? `${count} PAGES FOUND` : 'SCAN PAGE';
+    }
+
+    if (count > lastScannedCount) {
+      const badge = document.getElementById('koda-floating-badge');
+      if (badge) {
+        badge.classList.remove('koda-glow');
+        // trigger reflow to restart animation
+        void badge.offsetWidth;
+        badge.classList.add('koda-glow');
+        
+        // Remove class after animation finishes (1500ms)
+        setTimeout(() => {
+          badge.classList.remove('koda-glow');
+        }, 1500);
+      }
+      lastScannedCount = count;
     }
   }
 

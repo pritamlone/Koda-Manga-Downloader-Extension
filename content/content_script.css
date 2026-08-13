@@ -55,3 +55,14 @@
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
+
+@keyframes kodaPulseGlow {
+  0% { box-shadow: 3px 3px 0px #121212; opacity: 1; }
+  50% { box-shadow: 0 0 20px 5px #FF4D00; opacity: 1; transform: scale(1.02); }
+  100% { box-shadow: 3px 3px 0px #121212; opacity: 1; }
+}
+
+#koda-floating-badge.koda-glow {
+  animation: kodaPulseGlow 1.5s ease-out;
+  opacity: 1;
+}

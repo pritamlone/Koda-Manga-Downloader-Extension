@@ -859,6 +859,7 @@ if (typeof module !== 'undefined') {
     }, 2000);
   }
 
+  let lastScannedCount = 0;
   function updateDetectedPages() {
     const adapter = window.KodaAdapters ? window.KodaAdapters.getMatchingAdapter() : null;
     let count = 0;
@@ -869,6 +870,22 @@ if (typeof module !== 'undefined') {
     const countEl = document.getElementById('koda-page-count');
     if (countEl) {
       countEl.textContent = count > 0 ? \`\${count} PAGES FOUND\` : 'SCAN PAGE';
+    }
+
+    if (count > lastScannedCount) {
+      const badge = document.getElementById('koda-floating-badge');
+      if (badge) {
+        badge.classList.remove('koda-glow');
+        // trigger reflow to restart animation
+        void badge.offsetWidth;
+        badge.classList.add('koda-glow');
+        
+        // Remove class after animation finishes (1500ms)
+        setTimeout(() => {
+          badge.classList.remove('koda-glow');
+        }, 1500);
+      }
+      lastScannedCount = count;
     }
   }
 
@@ -997,6 +1014,17 @@ if (typeof module !== 'undefined') {
   border: 1px solid #121212;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+}
+
+@keyframes kodaPulseGlow {
+  0% { box-shadow: 3px 3px 0px #121212; opacity: 1; transform: translate(0, 0) scale(1); }
+  50% { box-shadow: 0 0 20px 5px #FF4D00; opacity: 1; transform: translate(0, 0) scale(1.05); }
+  100% { box-shadow: 3px 3px 0px #121212; opacity: 1; transform: translate(0, 0) scale(1); }
+}
+
+#koda-floating-badge.koda-glow {
+  animation: kodaPulseGlow 1.5s ease-out;
+  opacity: 1;
 }`
   },
   {
