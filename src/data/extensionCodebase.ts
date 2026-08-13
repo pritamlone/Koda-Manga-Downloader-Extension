@@ -87,7 +87,8 @@ export const EXTENSION_FILES: ExtensionFile[] = [
       "resources": [
         "lib/jszip.min.js",
         "lib/jspdf_builder.js",
-        "icons/*"
+        "icons/*",
+        "popup/*"
       ],
       "matches": ["<all_urls>"]
     }
@@ -850,13 +851,52 @@ if (typeof module !== 'undefined') {
       document.removeEventListener('mouseup', onMouseUp);
     }
 
+    let popupIframe = null;
+
     badge.addEventListener('click', (e) => {
       if (isDragging) {
         e.preventDefault();
         e.stopPropagation();
         return;
       }
-      chrome.runtime.sendMessage({ action: 'OPEN_POPUP_WITH_CURRENT' });
+      
+      if (popupIframe) {
+        // Toggle visibility if it already exists
+        const isHidden = popupIframe.style.display === 'none';
+        popupIframe.style.display = isHidden ? 'block' : 'none';
+        
+        // Reposition based on current badge position
+        if (isHidden) {
+          const rect = badge.getBoundingClientRect();
+          popupIframe.style.top = (rect.top - 610) + 'px'; // 600px height + 10px margin
+          popupIframe.style.left = rect.left + 'px';
+        }
+      } else {
+        // Create iframe popup
+        popupIframe = document.createElement('iframe');
+        popupIframe.src = chrome.runtime.getURL('popup/popup.html');
+        popupIframe.id = 'koda-extension-iframe';
+        
+        // Style it to float near the badge
+        popupIframe.style.position = 'fixed';
+        popupIframe.style.width = '450px';
+        popupIframe.style.height = '600px';
+        popupIframe.style.border = '1px solid #333';
+        popupIframe.style.borderRadius = '8px';
+        popupIframe.style.boxShadow = '0 10px 30px rgba(0,0,0,0.5)';
+        popupIframe.style.zIndex = '9999999999';
+        popupIframe.style.backgroundColor = '#121212';
+        
+        // Position it just above the badge
+        const rect = badge.getBoundingClientRect();
+        popupIframe.style.top = Math.max(0, rect.top - 610) + 'px'; // Ensure it doesn't go off top of screen
+        
+        // Ensure it doesn't go off right side of screen
+        const maxLeft = window.innerWidth - 460;
+        popupIframe.style.left = Math.min(rect.left, maxLeft) + 'px';
+        
+        document.body.appendChild(popupIframe);
+      }
     });
 
     document.body.appendChild(badge);
