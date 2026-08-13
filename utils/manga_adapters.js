@@ -128,6 +128,54 @@ window.KodaAdapters = {
     }
   },
 
+  // Helper to robustly extract chapter links from a manga index page
+  extractChapterLinks: () => {
+    const links = Array.from(document.querySelectorAll('a'));
+    const knownLinks = Array.from(document.querySelectorAll('.wp-manga-chapter a, .chapter-list a, .listing-chapters_wrap a, .eplister a, #chapterlist a, .clstyle a, a[href*="chapter"], a.chapter, li.chapter a'));
+    
+    const chapterLinks = links.filter(a => {
+      if (!a.href || a.href.startsWith('javascript:')) return false;
+      const baseUrl = window.location.href.split('#')[0];
+      if (a.href.includes('#') && a.href.split('#')[0] === baseUrl) return false;
+      
+      if (knownLinks.includes(a)) return true;
+      
+      const text = a.textContent.toLowerCase();
+      const href = a.getAttribute('href') || '';
+      
+      if (text.includes('chapter') || text.includes('ch.') || text.includes('episode') || text.match(/^ch\s*\d+/i)) {
+        return true;
+      }
+      
+      if (href.toLowerCase().includes('chapter') || href.toLowerCase().includes('ch-')) {
+         return true;
+      }
+      
+      if (text.trim().match(/^\d+(\.\d+)?$/)) {
+         let parent = a.parentElement;
+         for (let i=0; i<3 && parent; i++) {
+             if (parent.className && typeof parent.className === 'string' && (parent.className.toLowerCase().includes('chapter') || parent.className.toLowerCase().includes('list'))) {
+                 return true;
+             }
+             parent = parent.parentElement;
+         }
+      }
+      return false;
+    });
+    
+    const unique = [];
+    const seen = new Set();
+    for (const a of chapterLinks) {
+        if (!seen.has(a.href)) {
+            seen.add(a.href);
+            unique.push({
+               title: a.textContent.replace(/\s+/g, ' ').trim() || 'Chapter',
+               url: a.href
+            });
+        }
+    }
+    return unique;
+  },
   adapters: [
     {
       name: 'AquaManga / AquaReader / Madara Theme',
@@ -148,6 +196,11 @@ window.KodaAdapters = {
           title: text.replace(/\s+/g, ' ').trim(),
           site: 'AquaManga/Madara'
         };
+      },
+      getChapterLinks: () => { return window.KodaAdapters.extractChapterLinks(); },
+      _oldgetChapterLinks: () => {
+        const links = Array.from(document.querySelectorAll(".wp-manga-chapter a, .chapter-list a, .listing-chapters_wrap a"));
+        return links.map(l => ({ title: l.textContent.trim(), url: l.href })).filter(l => l.url);
       },
       getChapterImages: () => {
         const selectors = [
@@ -183,6 +236,11 @@ window.KodaAdapters = {
           site: 'MangaDex'
         };
       },
+      getChapterLinks: () => { return window.KodaAdapters.extractChapterLinks(); },
+      _oldgetChapterLinks: () => {
+        const links = Array.from(document.querySelectorAll(".wp-manga-chapter a, .chapter-list a, .listing-chapters_wrap a"));
+        return links.map(l => ({ title: l.textContent.trim(), url: l.href })).filter(l => l.url);
+      },
       getChapterImages: () => {
         const imgs = Array.from(document.querySelectorAll('.md-page img, img[src*="mangadex"], .reader-page img'));
         const urls = imgs.map(img => window.KodaAdapters.extractImageUrl(img)).filter(Boolean);
@@ -197,6 +255,11 @@ window.KodaAdapters = {
         const breadcrumb = document.querySelectorAll('.panel-breadcrumb a');
         const title = breadcrumb.length > 1 ? breadcrumb[1].textContent.trim() : 'Manganato';
         return { title, site: 'Manganato' };
+      },
+      getChapterLinks: () => { return window.KodaAdapters.extractChapterLinks(); },
+      _oldgetChapterLinks: () => {
+        const links = Array.from(document.querySelectorAll(".wp-manga-chapter a, .chapter-list a, .listing-chapters_wrap a"));
+        return links.map(l => ({ title: l.textContent.trim(), url: l.href })).filter(l => l.url);
       },
       getChapterImages: () => {
         const container = document.querySelector('.container-chapter-reader');
@@ -217,6 +280,12 @@ window.KodaAdapters = {
           title: (rawTitle || 'Manga Chapter').replace(/\s+/g, ' ').trim(),
           site: window.location.hostname
         };
+      },
+      getChapterLinks: () => { return window.KodaAdapters.extractChapterLinks(); },
+      _oldgetChapterLinks: () => { return window.KodaAdapters.extractChapterLinks(); },
+      _oldgetChapterLinks: () => {
+        const links = Array.from(document.querySelectorAll("a[href*=\"chapter\"], a.chapter, li.chapter a"));
+        return links.map(l => ({ title: l.textContent.trim(), url: l.href })).filter(l => l.url);
       },
       getChapterImages: (customSelector) => {
         let imgs = [];
