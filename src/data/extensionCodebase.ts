@@ -792,7 +792,59 @@ if (typeof module !== 'undefined') {
       </div>
     \`;
 
-    badge.addEventListener('click', () => {
+    let isDragging = false;
+    let isDragIntent = false;
+    let startX = 0, startY = 0;
+    let initialRect = null;
+
+    badge.addEventListener('mousedown', (e) => {
+      isDragging = false;
+      isDragIntent = true;
+      startX = e.clientX;
+      startY = e.clientY;
+      initialRect = badge.getBoundingClientRect();
+      
+      // Remove right/bottom constraints to allow left/top positioning
+      badge.style.right = 'auto';
+      badge.style.bottom = 'auto';
+      badge.style.left = initialRect.left + 'px';
+      badge.style.top = initialRect.top + 'px';
+      badge.classList.add('is-dragging');
+      
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mouseup', onMouseUp);
+      e.preventDefault(); // Prevent text selection during drag
+    });
+
+    function onMouseMove(e) {
+      if (!isDragIntent) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      
+      // Threshold to consider it a drag vs click
+      if (!isDragging && (Math.abs(dx) > 3 || Math.abs(dy) > 3)) {
+        isDragging = true;
+      }
+
+      if (isDragging) {
+        badge.style.left = (initialRect.left + dx) + 'px';
+        badge.style.top = (initialRect.top + dy) + 'px';
+      }
+    }
+
+    function onMouseUp(e) {
+      isDragIntent = false;
+      badge.classList.remove('is-dragging');
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+    }
+
+    badge.addEventListener('click', (e) => {
+      if (isDragging) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
       chrome.runtime.sendMessage({ action: 'OPEN_POPUP_WITH_CURRENT' });
     });
 
@@ -898,7 +950,13 @@ if (typeof module !== 'undefined') {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   cursor: pointer;
   user-select: none;
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  opacity: 0.35;
+  transition: opacity 0.3s ease, transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+#koda-floating-badge:hover,
+#koda-floating-badge.is-dragging {
+  opacity: 1;
 }
 
 #koda-floating-badge:hover {
