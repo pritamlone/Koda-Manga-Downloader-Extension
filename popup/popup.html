@@ -29,6 +29,7 @@
     <nav class="koda-nav-tabs">
       <button class="koda-tab active" data-tab="tab-scrape">CURRENT PAGE</button>
       <button class="koda-tab" data-tab="tab-batch">BATCH QUEUE</button>
+      <button class="koda-tab" data-tab="tab-lv2">LV2 (BETA)</button>
       <button class="koda-tab" data-tab="tab-active">DOWNLOADS (<span id="active-count">0</span>)</button>
     </nav>
 
@@ -83,6 +84,35 @@
 
         <button id="btn-start-batch" class="koda-btn-secondary full-width mt-12">
           📥 QUEUE CHAPTER RANGE
+        </button>
+      </div>
+    </section>
+
+    <!-- Tab LV2: Background Crawl -->
+    <section id="tab-lv2" class="koda-tab-content">
+      <div class="koda-card">
+        <p class="koda-hint">AUTO-DOWNLOAD FROM CHAPTER INDEX</p>
+        <div class="koda-field-group">
+          <label class="koda-label">DETECTED MANGA TITLE</label>
+          <input type="text" id="input-lv2-manga-title" class="koda-input" value="Scanning page...">
+        </div>
+        <div class="koda-field-row">
+           <div class="koda-field-group flex-1">
+             <label class="koda-label">EXPORT FORMAT</label>
+             <select id="select-format-lv2" class="koda-select">
+               <option value="cbz">CBZ (Comic Zip)</option>
+               <option value="zip">Standard ZIP</option>
+               <option value="pdf">PDF Document</option>
+               <option value="folder">Images Folder</option>
+             </select>
+           </div>
+        </div>
+        <div class="koda-page-summary">
+          <span class="koda-badge" id="badge-lv2-links">0 LINKS DETECTED</span>
+          <button id="btn-rescan-lv2" class="koda-btn-subtle">🔄 RESCAN LINKS</button>
+        </div>
+        <button id="btn-start-lv2" class="koda-btn-primary full-width mt-12">
+          🚀 START BATCH DOWNLOAD
         </button>
       </div>
     </section>

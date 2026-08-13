@@ -40,6 +40,11 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 
 // Runtime Message Hub
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.action === 'START_LV2_TASKS') {
+    startLv2Processor(message.tasks, message.mangaTitle, message.format);
+    sendResponse({ status: 'started' });
+    return true;
+  }
   if (message.action === 'START_DOWNLOAD_TASK') {
     enqueueTask(message.task).then(sendResponse);
     return true; // Async response
@@ -409,4 +414,63 @@ async function cancelTask(taskId) {
   queue = queue.filter(t => t.id !== taskId);
   await chrome.storage.local.set({ queue });
   return { success: true };
+}
+
+async function startLv2Processor(links, mangaTitle, format) {
+  for (let i = 0; i < links.length; i++) {
+    const link = links[i];
+    console.log(`[LV2] Processing chapter ${i+1}/${links.length}: ${link.url}`);
+    
+    // We create a hidden offscreen document or execute script on the page to fetch the images of the link
+    // However, since we can't easily navigate a tab without disrupting the user, 
+    // we'll fetch the HTML of the link, parse it, and extract the images.
+    
+    try {
+      const response = await fetch(link.url);
+      const text = await response.text();
+      
+      // Parse the HTML
+      // Since background workers don't have DOMParser, we'll use regex or send it to an offscreen document
+      // Let's send it to the offscreen document to parse using a temporary div
+      await ensureOffscreenDocument();
+      const scrapeResult = await chrome.runtime.sendMessage({
+         action: 'OFFSCREEN_LV2_PARSE_HTML',
+         html: text,
+         url: link.url
+      });
+      
+      if(scrapeResult && scrapeResult.images && scrapeResult.images.length > 0) {
+        await enqueueTask({
+          mangaTitle: mangaTitle,
+          chapterTitle: link.title || `Chapter ${i+1}`,
+          chapterNum: i + 1,
+          format: format,
+          pages: scrapeResult.images
+        });
+      }
+    } catch (e) {
+      console.error("[LV2] Failed to process link:", link.url, e);
+    }
+    
+    // Sleep to avoid getting IP banned
+    await new Promise(r => setTimeout(r, 1000));
+  }
+}
+
+async function ensureOffscreenDocument() {
+  const offscreenUrl = chrome.runtime.getURL('offscreen/offscreen.html');
+  const existingContexts = await chrome.runtime.getContexts({
+    contextTypes: ['OFFSCREEN_DOCUMENT'],
+    documentUrls: [offscreenUrl]
+  });
+
+  if (existingContexts.length > 0) {
+    return;
+  }
+
+  await chrome.offscreen.createDocument({
+    url: offscreenUrl,
+    reasons: ['BLOBS', 'DOM_PARSER'],
+    justification: 'To fetch images natively with fetch API escaping CORS restrictions and to parse HTML.'
+  });
 }
