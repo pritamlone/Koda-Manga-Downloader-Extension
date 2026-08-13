@@ -75,8 +75,8 @@
         return;
       }
       
-      const popupWidth = 450;
-      const popupHeight = 420;
+      const popupWidth = 380;
+      const popupHeight = 500;
 
       const positionPopup = () => {
         const rect = badge.getBoundingClientRect();

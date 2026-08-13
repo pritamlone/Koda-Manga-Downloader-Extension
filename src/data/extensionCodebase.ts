@@ -860,8 +860,8 @@ if (typeof module !== 'undefined') {
         return;
       }
       
-      const popupWidth = 450;
-      const popupHeight = 420;
+      const popupWidth = 380;
+      const popupHeight = 500;
 
       const positionPopup = () => {
         const rect = badge.getBoundingClientRect();
@@ -1517,6 +1517,7 @@ function renderQueue(queue) {
 
 body.koda-theme-webapp {
   width: 380px;
+  overflow-x: hidden;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   background-color: var(--bg-canvas);
   color: var(--text-primary);
