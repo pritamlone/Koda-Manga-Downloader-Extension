@@ -75,6 +75,43 @@
         return;
       }
       
+      const popupWidth = 450;
+      const popupHeight = 420;
+
+      const positionPopup = () => {
+        const rect = badge.getBoundingClientRect();
+        let top, left;
+
+        // Vertical positioning (Prefer Above)
+        if (rect.top >= popupHeight + 10) {
+          top = rect.top - popupHeight - 10;
+        } else if (window.innerHeight - rect.bottom >= popupHeight + 10) {
+          top = rect.bottom + 10;
+        } else {
+          top = 10; // Fallback
+        }
+
+        // Horizontal positioning (Prefer aligning with badge's edge depending on side of screen)
+        if (rect.left > window.innerWidth / 2) {
+          // Badge on right half -> align right edges
+          if (rect.right >= popupWidth + 10) {
+            left = rect.right - popupWidth;
+          } else {
+            left = window.innerWidth - popupWidth - 10;
+          }
+        } else {
+          // Badge on left half -> align left edges
+          if (window.innerWidth - rect.left >= popupWidth + 10) {
+            left = rect.left;
+          } else {
+            left = 10;
+          }
+        }
+
+        popupIframe.style.top = top + 'px';
+        popupIframe.style.left = left + 'px';
+      };
+
       if (popupIframe) {
         // Toggle visibility if it already exists
         const isHidden = popupIframe.style.display === 'none';
@@ -82,9 +119,7 @@
         
         // Reposition based on current badge position
         if (isHidden) {
-          const rect = badge.getBoundingClientRect();
-          popupIframe.style.top = (rect.top - 610) + 'px'; // 600px height + 10px margin
-          popupIframe.style.left = rect.left + 'px';
+          positionPopup();
         }
       } else {
         // Create iframe popup
@@ -94,21 +129,15 @@
         
         // Style it to float near the badge
         popupIframe.style.position = 'fixed';
-        popupIframe.style.width = '450px';
-        popupIframe.style.height = '600px';
+        popupIframe.style.width = popupWidth + 'px';
+        popupIframe.style.height = popupHeight + 'px';
         popupIframe.style.border = '1px solid #333';
         popupIframe.style.borderRadius = '8px';
         popupIframe.style.boxShadow = '0 10px 30px rgba(0,0,0,0.5)';
         popupIframe.style.zIndex = '9999999999';
         popupIframe.style.backgroundColor = '#121212';
         
-        // Position it just above the badge
-        const rect = badge.getBoundingClientRect();
-        popupIframe.style.top = Math.max(0, rect.top - 610) + 'px'; // Ensure it doesn't go off top of screen
-        
-        // Ensure it doesn't go off right side of screen
-        const maxLeft = window.innerWidth - 460;
-        popupIframe.style.left = Math.min(rect.left, maxLeft) + 'px';
+        positionPopup();
         
         document.body.appendChild(popupIframe);
       }
