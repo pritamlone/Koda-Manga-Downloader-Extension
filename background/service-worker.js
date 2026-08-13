@@ -57,6 +57,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.action === 'OPEN_POPUP_WITH_CURRENT') {
+    chrome.windows.create({
+      url: chrome.runtime.getURL("popup/popup.html"),
+      type: "popup",
+      width: 450,
+      height: 600
+    });
+    sendResponse({ success: true });
+    return true;
+  }
+
   if (message.action === 'TRIGGER_NATIVE_DOWNLOAD') {
     triggerChromeDownload(message.downloadOptions).then(sendResponse);
     return true;
