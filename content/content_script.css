@@ -72,6 +72,13 @@
   display: block;
 }
 
+.koda-logo-icon {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+  display: block;
+}
+
 .koda-badge-pip {
   position: absolute;
   top: -2px;

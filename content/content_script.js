@@ -29,7 +29,7 @@
     badge.innerHTML = `
       <div class="koda-badge-icon-box" id="koda-badge-icon-anchor">
         ${iconUrl ? `<img src="${iconUrl}" class="koda-badge-icon-img" alt="Koda" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">` : ''}
-        <span style="${iconUrl ? 'display:none;' : ''}font-size:15px;line-height:1;">📖</span>
+        <span style="${iconUrl ? 'display:none;' : ''}font-size:15px;line-height:1;"><img class="koda-logo-icon" src="${typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.getURL ? chrome.runtime.getURL('icons/icon16.png') : 'icons/icon16.png'}" alt="icon" /></span>
         <span class="koda-badge-pip" id="koda-badge-pip"></span>
       </div>
       <div class="koda-badge-bar-content">
