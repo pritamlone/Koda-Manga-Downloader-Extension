@@ -7,40 +7,137 @@
   console.log('[Koda Extension] Active Content Script on:', window.location.href);
 
   function injectKodaFloatingBadge() {
-    if (document.getElementById('koda-floating-badge')) return;
+    if (document.getElementById('koda-floating-container') || document.getElementById('koda-floating-badge')) return;
 
+    // Create Root Floating Container
+    const container = document.createElement('div');
+    container.id = 'koda-floating-container';
+
+    // State 1 & 2: Floating Badge (Contracted Icon -> Expand to Bar on Hover)
     const badge = document.createElement('div');
     badge.id = 'koda-floating-badge';
+    badge.title = 'Koda Manga Downloader (Click to open, hover to inspect)';
+    
+    // Check if extension icon is accessible, with SVG fallback
+    let iconUrl = '';
+    try {
+      if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.getURL) {
+        iconUrl = chrome.runtime.getURL('icons/icon48.png');
+      }
+    } catch (e) {}
+
     badge.innerHTML = `
-      <div class="koda-badge-inner">
-        <span class="koda-logo-icon">📖</span>
+      <div class="koda-badge-icon-box" id="koda-badge-icon-anchor">
+        ${iconUrl ? `<img src="${iconUrl}" class="koda-badge-icon-img" alt="Koda" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">` : ''}
+        <span style="${iconUrl ? 'display:none;' : ''}font-size:15px;line-height:1;">📖</span>
+        <span class="koda-badge-pip" id="koda-badge-pip"></span>
+      </div>
+      <div class="koda-badge-bar-content">
         <span class="koda-badge-title">KODA DOWNLOADER</span>
         <span class="koda-badge-count" id="koda-page-count">SCANNING...</span>
+        <span class="koda-badge-action-hint">EXPAND ↗</span>
       </div>
     `;
 
+    // State 3: Popup Window (Tab size 380x520)
+    const popupWindow = document.createElement('div');
+    popupWindow.id = 'koda-popup-window';
+    popupWindow.innerHTML = `
+      <div class="koda-popup-header">
+        <div class="koda-popup-title">
+          <span>📖</span>
+          <span>KODA MANGA DOWNLOADER</span>
+        </div>
+        <div class="koda-popup-controls">
+          <button type="button" class="koda-popup-btn" id="koda-popup-close-btn" title="Contract to Icon">✕</button>
+        </div>
+      </div>
+      <iframe class="koda-popup-iframe" id="koda-extension-iframe" src="${typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.getURL ? chrome.runtime.getURL('popup/popup.html') : ''}"></iframe>
+    `;
+
+    container.appendChild(popupWindow);
+    container.appendChild(badge);
+    document.body.appendChild(container);
+
+    let isPopupOpen = false;
     let isDragging = false;
     let isDragIntent = false;
     let startX = 0, startY = 0;
-    let initialRect = null;
+    let initialLeft = 0, initialTop = 0;
 
+    // Close / Contract popup
+    function closePopup() {
+      isPopupOpen = false;
+      popupWindow.classList.remove('is-open');
+      badge.classList.remove('is-active');
+    }
+
+    // Open / Expand popup tab
+    function openPopup() {
+      isPopupOpen = true;
+      popupWindow.classList.add('is-open');
+      badge.classList.add('is-active');
+
+      // Intelligently calculate popup placement relative to container & viewport
+      const rect = container.getBoundingClientRect();
+      const popupWidth = 380;
+      const popupHeight = 520;
+      
+      // If near top half of screen, open downward; if near bottom, open upward
+      if (rect.top < popupHeight + 20) {
+        popupWindow.style.transformOrigin = 'top right';
+        container.style.flexDirection = 'column-reverse';
+        popupWindow.style.marginBottom = '0px';
+        popupWindow.style.marginTop = '10px';
+      } else {
+        popupWindow.style.transformOrigin = 'bottom right';
+        container.style.flexDirection = 'column';
+        popupWindow.style.marginBottom = '10px';
+        popupWindow.style.marginTop = '0px';
+      }
+    }
+
+    function togglePopup() {
+      if (isPopupOpen) {
+        closePopup();
+      } else {
+        openPopup();
+      }
+    }
+
+    // Header close button
+    const closeBtn = document.getElementById('koda-popup-close-btn');
+    if (closeBtn) {
+      closeBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        closePopup();
+      });
+    }
+
+    // Dragging Logic
     badge.addEventListener('mousedown', (e) => {
+      // Don't drag if clicking inside popup
+      if (e.target.closest('#koda-popup-window')) return;
+
       isDragging = false;
       isDragIntent = true;
       startX = e.clientX;
       startY = e.clientY;
-      initialRect = badge.getBoundingClientRect();
+      const rect = container.getBoundingClientRect();
+      initialLeft = rect.left;
+      initialTop = rect.top;
       
-      // Remove right/bottom constraints to allow left/top positioning
-      badge.style.right = 'auto';
-      badge.style.bottom = 'auto';
-      badge.style.left = initialRect.left + 'px';
-      badge.style.top = initialRect.top + 'px';
+      // Convert right/bottom to fixed left/top coords
+      container.style.right = 'auto';
+      container.style.bottom = 'auto';
+      container.style.left = initialLeft + 'px';
+      container.style.top = initialTop + 'px';
       badge.classList.add('is-dragging');
       
       document.addEventListener('mousemove', onMouseMove);
       document.addEventListener('mouseup', onMouseUp);
-      e.preventDefault(); // Prevent text selection during drag
+      e.preventDefault();
     });
 
     function onMouseMove(e) {
@@ -48,14 +145,16 @@
       const dx = e.clientX - startX;
       const dy = e.clientY - startY;
       
-      // Threshold to consider it a drag vs click
-      if (!isDragging && (Math.abs(dx) > 3 || Math.abs(dy) > 3)) {
+      // Threshold to distinguish drag vs click
+      if (!isDragging && (Math.abs(dx) > 4 || Math.abs(dy) > 4)) {
         isDragging = true;
       }
 
       if (isDragging) {
-        badge.style.left = (initialRect.left + dx) + 'px';
-        badge.style.top = (initialRect.top + dy) + 'px';
+        let newLeft = Math.max(10, Math.min(window.innerWidth - 60, initialLeft + dx));
+        let newTop = Math.max(10, Math.min(window.innerHeight - 60, initialTop + dy));
+        container.style.left = newLeft + 'px';
+        container.style.top = newTop + 'px';
       }
     }
 
@@ -66,84 +165,30 @@
       document.removeEventListener('mouseup', onMouseUp);
     }
 
-    let popupIframe = null;
-
+    // Click handler -> Expand to full popup tab size
     badge.addEventListener('click', (e) => {
       if (isDragging) {
         e.preventDefault();
         e.stopPropagation();
         return;
       }
-      
-      const popupWidth = 380;
-      const popupHeight = 455;
+      togglePopup();
+    });
 
-      const positionPopup = () => {
-        const rect = badge.getBoundingClientRect();
-        let top, left;
-
-        // Vertical positioning (Prefer Above)
-        if (rect.top >= popupHeight + 10) {
-          top = rect.top - popupHeight - 10;
-        } else if (window.innerHeight - rect.bottom >= popupHeight + 10) {
-          top = rect.bottom + 10;
-        } else {
-          top = 10; // Fallback
-        }
-
-        // Horizontal positioning (Prefer aligning with badge's edge depending on side of screen)
-        if (rect.left > window.innerWidth / 2) {
-          // Badge on right half -> align right edges
-          if (rect.right >= popupWidth + 10) {
-            left = rect.right - popupWidth;
-          } else {
-            left = window.innerWidth - popupWidth - 10;
-          }
-        } else {
-          // Badge on left half -> align left edges
-          if (window.innerWidth - rect.left >= popupWidth + 10) {
-            left = rect.left;
-          } else {
-            left = 10;
-          }
-        }
-
-        popupIframe.style.top = top + 'px';
-        popupIframe.style.left = left + 'px';
-      };
-
-      if (popupIframe) {
-        // Toggle visibility if it already exists
-        const isHidden = popupIframe.style.display === 'none';
-        popupIframe.style.display = isHidden ? 'block' : 'none';
-        
-        // Reposition based on current badge position
-        if (isHidden) {
-          positionPopup();
-        }
-      } else {
-        // Create iframe popup
-        popupIframe = document.createElement('iframe');
-        popupIframe.src = chrome.runtime.getURL('popup/popup.html');
-        popupIframe.id = 'koda-extension-iframe';
-        
-        // Style it to float near the badge
-        popupIframe.style.position = 'fixed';
-        popupIframe.style.width = popupWidth + 'px';
-        popupIframe.style.height = popupHeight + 'px';
-        popupIframe.style.border = '1px solid #333';
-        popupIframe.style.borderRadius = '8px';
-        popupIframe.style.boxShadow = '0 10px 30px rgba(0,0,0,0.5)';
-        popupIframe.style.zIndex = '9999999999';
-        popupIframe.style.backgroundColor = '#121212';
-        
-        positionPopup();
-        
-        document.body.appendChild(popupIframe);
+    // Close on outside click
+    document.addEventListener('click', (e) => {
+      if (isPopupOpen && !container.contains(e.target)) {
+        closePopup();
       }
     });
 
-    document.body.appendChild(badge);
+    // Close on Escape key
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && isPopupOpen) {
+        closePopup();
+      }
+    });
+
     updateDetectedPages();
     
     // Periodically update page count if images are lazy loaded on scroll
@@ -164,19 +209,26 @@
       count = imgs.length;
     }
     const countEl = document.getElementById('koda-page-count');
+    const badge = document.getElementById('koda-floating-badge');
+    
     if (countEl) {
       countEl.textContent = count > 0 ? `${count} PAGES FOUND` : 'SCAN PAGE';
     }
 
+    if (badge) {
+      if (count > 0) {
+        badge.classList.add('has-pages');
+      } else {
+        badge.classList.remove('has-pages');
+      }
+    }
+
     if (count > lastScannedCount) {
-      const badge = document.getElementById('koda-floating-badge');
       if (badge) {
         badge.classList.remove('koda-glow');
-        // trigger reflow to restart animation
-        void badge.offsetWidth;
+        void badge.offsetWidth; // trigger reflow
         badge.classList.add('koda-glow');
         
-        // Remove class after animation finishes (1500ms)
         setTimeout(() => {
           badge.classList.remove('koda-glow');
         }, 1500);

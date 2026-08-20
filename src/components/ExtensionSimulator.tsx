@@ -43,6 +43,10 @@ export const ExtensionSimulator: React.FC = () => {
     customSelectors: []
   });
 
+  const [simBadgeHovered, setSimBadgeHovered] = useState<boolean>(false);
+  const [simPopupOpen, setSimPopupOpen] = useState<boolean>(false);
+
+
   // Generate mock images and update preset site title detection
   useEffect(() => {
     generateMockImages(selectedPresetSite);
@@ -452,6 +456,151 @@ export const ExtensionSimulator: React.FC = () => {
               </p>
             </div>
           </div>
+
+          {/* Interactive Floating Badge 3-Stage Behavior Sandbox */}
+          <div className="border-2 border-[#121212] bg-[#F9F9F7] p-6 space-y-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b border-[#121212]/20 pb-3">
+              <div>
+                <h4 className="text-sm font-black uppercase tracking-wider text-[#121212] flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 bg-[#FF4D00] inline-block"></span>
+                  Floating Badge 3-Stage Interactive Demo
+                </h4>
+                <p className="text-xs text-[#121212]/70 font-medium">
+                  Test the responsive 3-state floating badge lifecycle on the simulated reader viewport.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => { setSimBadgeHovered(false); setSimPopupOpen(false); }}
+                  className="px-2.5 py-1 text-[10px] font-black uppercase border border-[#121212] bg-white hover:bg-[#121212] hover:text-white transition-colors"
+                >
+                  1. Contracted (Icon)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setSimBadgeHovered(true); setSimPopupOpen(false); }}
+                  className="px-2.5 py-1 text-[10px] font-black uppercase border border-[#121212] bg-white hover:bg-[#121212] hover:text-white transition-colors"
+                >
+                  2. Hover (Small Bar)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setSimPopupOpen(true); }}
+                  className="px-2.5 py-1 text-[10px] font-black uppercase border border-[#121212] bg-[#FF4D00] text-white hover:bg-[#121212] transition-colors"
+                >
+                  3. Click (Popup Tab)
+                </button>
+              </div>
+            </div>
+
+            {/* Simulated Manga Reader Canvas */}
+            <div className="relative w-full h-80 bg-neutral-900 border-2 border-[#121212] overflow-hidden p-4 flex flex-col justify-between">
+              {/* Background Mock Reader Content */}
+              <div className="space-y-3 opacity-40 select-none pointer-events-none">
+                <div className="h-6 w-1/3 bg-neutral-700 rounded-none"></div>
+                <div className="h-32 w-full bg-neutral-800 border border-neutral-700 flex items-center justify-center text-xs font-mono text-neutral-400">
+                  [Simulated Manga Page Canvas: Solo Leveling Chapter 179]
+                </div>
+                <div className="h-4 w-2/3 bg-neutral-700 rounded-none"></div>
+              </div>
+
+              {/* Floating Badge Interactive Container */}
+              <div className="absolute bottom-4 right-4 z-20 flex flex-col items-end pointer-events-auto">
+                {/* State 3: Expanded Popup Tab Window */}
+                {simPopupOpen && (
+                  <div className="mb-2 w-72 bg-[#121212] border-2 border-[#FF4D00] shadow-[6px_6px_0px_#000000] text-white p-3 space-y-3 animate-in fade-in zoom-in-95 duration-200">
+                    <div className="flex items-center justify-between border-b border-neutral-800 pb-2">
+                      <span className="text-[11px] font-black italic uppercase text-[#FF4D00] flex items-center gap-1.5">
+                        <span>📖</span> Koda Manga Downloader
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setSimPopupOpen(false)}
+                        className="bg-neutral-800 hover:bg-[#FF4D00] text-white text-[10px] font-black px-2 py-0.5 border border-neutral-700 transition-colors"
+                      >
+                        ✕
+                      </button>
+                    </div>
+
+                    <div className="space-y-2 text-xs">
+                      <div className="p-2 bg-neutral-900 border border-neutral-800">
+                        <span className="text-[10px] uppercase font-bold text-neutral-400 block">Detected Manga</span>
+                        <span className="font-bold text-white truncate block">Solo Leveling: Arise</span>
+                      </div>
+                      <div className="flex justify-between items-center bg-[#FF4D00]/10 border border-[#FF4D00]/30 p-2">
+                        <span className="text-[10px] font-black uppercase text-[#FF4D00]">{detectedImages.length} Pages Ready</span>
+                        <span className="text-[9px] bg-[#FF4D00] text-white font-black px-1.5 py-0.5">LV1 ACTIVE</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setActiveSubTab('popup')}
+                        className="w-full bg-[#FF4D00] text-white text-xs font-black uppercase py-1.5 border border-[#121212] hover:bg-white hover:text-[#121212] transition-colors"
+                      >
+                        Open Full Popup View →
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* State 1 & 2: Floating Badge */}
+                <div
+                  onMouseEnter={() => setSimBadgeHovered(true)}
+                  onMouseLeave={() => setSimBadgeHovered(false)}
+                  onClick={() => setSimPopupOpen(!simPopupOpen)}
+                  className={`cursor-pointer select-none inline-flex items-center p-1 border-2 border-[#121212] rounded-full transition-all duration-300 ${
+                    simPopupOpen
+                      ? 'bg-white shadow-[4px_4px_0px_#FF4D00] border-[#FF4D00]'
+                      : simBadgeHovered
+                      ? 'bg-[#F9F9F7] shadow-[4px_4px_0px_#121212] -translate-y-0.5'
+                      : 'bg-[#F9F9F7] opacity-85 shadow-[3px_3px_0px_#121212]'
+                  }`}
+                >
+                  {/* Icon Box */}
+                  <div className="w-8 h-8 rounded-full bg-[#FF4D00] text-white flex items-center justify-center text-sm font-black border border-[#121212] relative flex-shrink-0">
+                    <span>📖</span>
+                    {!simBadgeHovered && !simPopupOpen && detectedImages.length > 0 && (
+                      <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-[#121212] border-2 border-white rounded-full"></span>
+                    )}
+                  </div>
+
+                  {/* Expandable Bar Content */}
+                  <div
+                    className={`flex items-center gap-2 overflow-hidden whitespace-nowrap transition-all duration-300 ${
+                      simBadgeHovered || simPopupOpen
+                        ? 'max-w-[280px] opacity-100 ml-2 pr-2.5'
+                        : 'max-w-0 opacity-0 ml-0 pr-0'
+                    }`}
+                  >
+                    <span className="text-[11px] font-black italic text-[#121212] uppercase">KODA DOWNLOADER</span>
+                    <span className="text-[10px] font-black bg-[#FF4D00] text-white px-2 py-0.5 border border-[#121212]">
+                      {detectedImages.length} PAGES
+                    </span>
+                    <span className="text-[9px] font-bold text-[#121212]/60 uppercase">
+                      {simPopupOpen ? 'CONTRACT' : 'CLICK'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs text-[#121212]">
+              <div className="p-3 bg-white border border-[#121212]">
+                <strong className="block text-[#FF4D00] font-black uppercase text-[10px]">1. Resting / Contracted</strong>
+                <p className="text-[#121212]/80 mt-1">When user is reading, badge stays as a clean 44px icon with notification pip.</p>
+              </div>
+              <div className="p-3 bg-white border border-[#121212]">
+                <strong className="block text-[#121212] font-black uppercase text-[10px]">2. Hover / Small Bar</strong>
+                <p className="text-[#121212]/80 mt-1">Expands into a sleek bar displaying detected page counts without obstructing view.</p>
+              </div>
+              <div className="p-3 bg-white border border-[#121212]">
+                <strong className="block text-[#FF4D00] font-black uppercase text-[10px]">3. Click / Popup Tab</strong>
+                <p className="text-[#121212]/80 mt-1">Expands to full 380x520px extension popup window with instant collapse controls.</p>
+              </div>
+            </div>
+          </div>
+
         </div>
       )}
 
