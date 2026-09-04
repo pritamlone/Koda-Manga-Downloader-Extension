@@ -54,8 +54,8 @@ window.KodaAdapters = {
     if (typeof document !== 'undefined') {
       const chapterSelect = document.querySelector('select[name*="chapter"], select#chapter-select, select.single-chapter-select, .chapter-select');
       if (chapterSelect) {
-        const selectedOpt = chapterSelect.options[chapterSelect.selectedIndex];
-        const textToMatch = selectedOpt ? selectedOpt.text : chapterSelect.value;
+        const selectedOpt = chapterSelect.options ? chapterSelect.options[chapterSelect.selectedIndex] : null;
+        const textToMatch = selectedOpt ? selectedOpt.text : (chapterSelect.value || chapterSelect.textContent);
         const match = textToMatch ? textToMatch.match(/(\d+(\.\d+)?)/) : null;
         if (match) detectedFromDom = parseFloat(match[1]);
       }
@@ -292,11 +292,12 @@ window.KodaAdapters = {
         if (customSelector) {
           imgs = Array.from(document.querySelectorAll(customSelector));
         } else {
-          imgs = Array.from(document.querySelectorAll('.reader img, #reader img, .chapter-content img, article img, img[class*="page"], img[id*="page"], .reading-content img'));
+          imgs = Array.from(document.querySelectorAll('.reader img, #reader img, .chapter-content img, article img, img[class*="page"], img[id*="page"], .reading-content img, .page-chapter img, .reading-detail img, .story-see-content img, .container-chapter-reader img, div[class*="chapter"] img, div[id*="chapter"] img'));
           if (imgs.length === 0) {
             imgs = Array.from(document.querySelectorAll('img')).filter(i => {
               const rect = i.getBoundingClientRect();
-              return (rect.width > 200 || rect.height > 200) && !i.src.includes('avatar') && !i.src.includes('logo');
+              const isLazy = i.hasAttribute('data-src') || i.hasAttribute('data-original') || i.hasAttribute('data-lazy-src') || i.hasAttribute('data-cdn');
+              return (rect.width > 200 || rect.height > 200 || isLazy) && !i.src.includes('avatar') && !i.src.includes('logo');
             });
           }
         }
