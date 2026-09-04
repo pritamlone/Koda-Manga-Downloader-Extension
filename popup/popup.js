@@ -136,7 +136,7 @@ async function loadCurrentPageData() {
         return;
       }
 
-      scrapedData = response;
+      scrapedData = response; scrapedData.url = tab.url;
       document.getElementById('input-manga-title').value = response.mangaTitle || 'Manga';
       document.getElementById('input-chapter-title').value = response.chapterTitle || 'Chapter 1';
       document.getElementById('badge-page-count').textContent = `${response.images.length} PAGES DETECTED`;
@@ -162,7 +162,8 @@ function bindEvents() {
       chapterTitle: document.getElementById('input-chapter-title').value,
       chapterNum: scrapedData.chapterNum || 1,
       format: format,
-      pages: scrapedData.images
+      pages: scrapedData.images,
+      pageUrl: scrapedData.url
     };
 
     chrome.runtime.sendMessage({
@@ -252,7 +253,42 @@ function renderQueue(queue) {
           <span>${task.completedPages} / ${task.totalPages} PAGES (${percent}%)</span>
           <span class="koda-task-status">${task.status.toUpperCase()}</span>
         </div>
+        ${task.error ? `<div style="color:#ff5555; font-size:10px; margin-top:4px; font-weight:bold;">ERROR: ${task.error}</div>` : ''}
       </div>
     `;
   }).join('');
 }
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && changes.logs) {
+    renderLogs(changes.logs.newValue);
+  }
+});
+async function initLogs() {
+  const res = await chrome.storage.local.get(['logs']);
+  renderLogs(res.logs || []);
+}
+function renderLogs(logs) {
+  const container = document.getElementById('log-list-container');
+  if (!container) return;
+  if (logs.length === 0) {
+    container.innerHTML = '<li>[SYSTEM] No logs available.</li>';
+    return;
+  }
+  container.innerHTML = logs.map(l => {
+    let color = '#ccc';
+    if (l.type === 'error') color = '#ff5555';
+    if (l.type === 'success') color = '#55ff55';
+    if (l.type === 'warning') color = '#ffff55';
+    return `<li style="color: ${color}; border-bottom: 1px solid #333; padding: 4px 0;">[${new Date(l.time).toLocaleTimeString()}] ${l.message}</li>`;
+  }).join('');
+}
+document.addEventListener('DOMContentLoaded', () => {
+  const btnClearLogs = document.getElementById('btn-clear-logs');
+  if (btnClearLogs) {
+    btnClearLogs.addEventListener('click', () => {
+      chrome.storage.local.set({ logs: [] });
+    });
+  }
+  initLogs();
+});

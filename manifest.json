@@ -23,7 +23,8 @@
     "storage",
     "offscreen",
     "scripting",
-    "alarms"
+    "alarms",
+    "declarativeNetRequest"
   ],
   "host_permissions": [
     "http://*/*",

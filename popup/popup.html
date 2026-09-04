@@ -30,6 +30,7 @@
       <button class="koda-tab active" data-tab="tab-scrape">CURRENT PAGE</button>
       <button class="koda-tab" data-tab="tab-batch">BATCH QUEUE</button>
       <button class="koda-tab" data-tab="tab-lv2">LV2 (BETA)</button>
+      <button class="koda-tab" data-tab="tab-logs">LOGS</button>
       <button class="koda-tab" data-tab="tab-active">DOWNLOADS (<span id="active-count">0</span>)</button>
     </nav>
 
@@ -122,6 +123,17 @@
       <div id="queue-list-container" class="koda-queue-list">
         <div class="koda-empty-state">NO ACTIVE DOWNLOADS IN QUEUE.</div>
       </div>
+    </section>
+
+    
+    <!-- Tab 4: Logs -->
+    <section id="tab-logs" class="koda-tab-content">
+      <div class="koda-card" style="height: 250px; overflow-y: auto; background: #111; color: #fff;">
+        <ul id="log-list-container" class="koda-log-list" style="list-style: none; padding: 10px; margin: 0; font-family: monospace; font-size: 11px;">
+          <li>[SYSTEM] Log initialized.</li>
+        </ul>
+      </div>
+      <button id="btn-clear-logs" class="koda-btn-subtle full-width mt-12">🗑️ CLEAR LOGS</button>
     </section>
 
     <!-- Footer Status -->

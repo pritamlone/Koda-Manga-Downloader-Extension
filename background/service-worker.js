@@ -91,6 +91,7 @@ async function enqueueTask(taskData) {
   }
 
   const newTask = {
+    pageUrl: taskData.pageUrl,
     id: 'task_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
     mangaTitle: sanitizePathSegment(taskData.mangaTitle || 'Manga'),
     chapterTitle: sanitizePathSegment(taskData.chapterTitle || 'Chapter 1'),
@@ -138,7 +139,8 @@ async function processNextQueueItem() {
     await executeDownloadTask(nextTask, settings);
   } catch (err) {
     console.error('[Koda Engine Error] Task failed:', err);
-    await updateTaskStatus(nextTask.id, 'failed');
+    await addLog('error', `Task failed: ${err.message}`);
+    await updateTaskStatus(nextTask.id, 'failed', err.message);
   } finally {
     isProcessingQueue = false;
     processNextQueueItem(); // Check for next item in queue
@@ -146,7 +148,9 @@ async function processNextQueueItem() {
 }
 
 async function executeDownloadTask(task, settings) {
+  await setupRefererRule(task.pageUrl);
   console.log(`[Koda Engine] Executing Task: ${task.mangaTitle} - ${task.chapterTitle} (${task.totalPages} pages)`);
+  await addLog('info', `Executing: ${task.chapterTitle}`);
 
   const concurrency = settings.maxConcurrentDownloads || 3;
   const delayMs = settings.delayBetweenRequestsMs || 250;
@@ -179,6 +183,7 @@ async function executeDownloadTask(task, settings) {
   }
 
   if (downloadedImages.length === 0) {
+    await clearRefererRule();
     throw new Error('Failed to download any images for this chapter.');
   }
 
@@ -186,6 +191,7 @@ async function executeDownloadTask(task, settings) {
   downloadedImages.sort((a, b) => a.index - b.index);
 
   // Set status to packaging
+  await clearRefererRule();
   await updateTaskStatus(task.id, 'packaging');
 
   // Generate target filename and clean manga folder path (no chapter numbers in folder name)
@@ -249,6 +255,7 @@ async function executeDownloadTask(task, settings) {
 
   await markTaskCompleted(task.id);
   console.log(`[Koda Engine] Task completed successfully: ${task.mangaTitle} - ${task.chapterTitle}`);
+  await addLog('success', `Completed: ${task.chapterTitle}`);
 }
 
 async function fetchPageImageWithRetries(page, maxRetries, delayMs) {
@@ -472,5 +479,42 @@ async function ensureOffscreenDocument() {
     url: offscreenUrl,
     reasons: ['BLOBS', 'DOM_PARSER'],
     justification: 'To fetch images natively with fetch API escaping CORS restrictions and to parse HTML.'
+  });
+}
+
+async function addLog(type, message) {
+  const res = await chrome.storage.local.get(['logs']);
+  const logs = res.logs || [];
+  logs.unshift({ type, message, time: Date.now() });
+  if (logs.length > 50) logs.pop();
+  await chrome.storage.local.set({ logs });
+}
+
+
+async function setupRefererRule(pageUrl) {
+  if (!pageUrl) return;
+  const origin = new URL(pageUrl).origin + '/';
+  await chrome.declarativeNetRequest.updateDynamicRules({
+    removeRuleIds: [1],
+    addRules: [{
+      id: 1,
+      priority: 1,
+      action: {
+        type: "modifyHeaders",
+        requestHeaders: [
+          { header: "referer", operation: "set", value: origin },
+          { header: "origin", operation: "set", value: origin.slice(0, -1) }
+        ]
+      },
+      condition: {
+        resourceTypes: ["xmlhttprequest", "image", "media", "other"]
+      }
+    }]
+  });
+}
+
+async function clearRefererRule() {
+  await chrome.declarativeNetRequest.updateDynamicRules({
+    removeRuleIds: [1]
   });
 }
