@@ -11,6 +11,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (s.delayBetweenRequestsMs) document.getElementById('opt-delay').value = s.delayBetweenRequestsMs;
     if (s.autoRetryAttempts) document.getElementById('opt-retries').value = s.autoRetryAttempts;
     if (s.filenameTemplate) document.getElementById('opt-template').value = s.filenameTemplate;
+    document.getElementById('opt-floating-banner').checked = s.enableFloatingBanner !== false;
   });
 
   document.getElementById('btn-save-settings').addEventListener('click', () => {
@@ -19,6 +20,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       delayBetweenRequestsMs: parseInt(document.getElementById('opt-delay').value, 10) || 300,
       autoRetryAttempts: parseInt(document.getElementById('opt-retries').value, 10) || 3,
       filenameTemplate: document.getElementById('opt-template').value,
+      enableFloatingBanner: document.getElementById('opt-floating-banner').checked,
       defaultFormat: 'cbz'
     };
 

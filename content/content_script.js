@@ -79,22 +79,41 @@
       badge.classList.add('is-active');
 
       // Intelligently calculate popup placement relative to container & viewport
-      const rect = container.getBoundingClientRect();
+      const rect = badge.getBoundingClientRect();
       const popupWidth = 380;
       const popupHeight = 520;
+      const spacing = 10;
       
-      // If near top half of screen, open downward; if near bottom, open upward
-      if (rect.top < popupHeight + 20) {
-        popupWindow.style.transformOrigin = 'top right';
-        container.style.flexDirection = 'column-reverse';
-        popupWindow.style.marginBottom = '0px';
-        popupWindow.style.marginTop = '10px';
+      let transformOriginY = 'bottom';
+      let transformOriginX = 'right';
+
+      // Vertical positioning
+      if (rect.top < popupHeight + spacing) {
+        // Near top, open downward
+        popupWindow.style.top = (rect.height + spacing) + 'px';
+        popupWindow.style.bottom = 'auto';
+        transformOriginY = 'top';
       } else {
-        popupWindow.style.transformOrigin = 'bottom right';
-        container.style.flexDirection = 'column';
-        popupWindow.style.marginBottom = '10px';
-        popupWindow.style.marginTop = '0px';
+        // Near bottom, open upward
+        popupWindow.style.bottom = (rect.height + spacing) + 'px';
+        popupWindow.style.top = 'auto';
+        transformOriginY = 'bottom';
       }
+
+      // Horizontal positioning
+      if (rect.left < popupWidth - rect.width) {
+        // Near left edge
+        popupWindow.style.left = '0px';
+        popupWindow.style.right = 'auto';
+        transformOriginX = 'left';
+      } else {
+        // Near right edge
+        popupWindow.style.right = '0px';
+        popupWindow.style.left = 'auto';
+        transformOriginX = 'right';
+      }
+
+      popupWindow.style.transformOrigin = `${transformOriginY} ${transformOriginX}`;
     }
 
     function togglePopup() {
@@ -303,9 +322,22 @@
     throw new Error('Could not fetch image from page context');
   }
 
+  function checkAndInjectBadge() {
+    try {
+      chrome.storage.local.get(['settings'], (res) => {
+        const s = res.settings || {};
+        if (s.enableFloatingBanner !== false) {
+          injectKodaFloatingBadge();
+        }
+      });
+    } catch (e) {
+      injectKodaFloatingBadge();
+    }
+  }
+
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', injectKodaFloatingBadge);
+    document.addEventListener('DOMContentLoaded', checkAndInjectBadge);
   } else {
-    injectKodaFloatingBadge();
+    checkAndInjectBadge();
   }
 })();
