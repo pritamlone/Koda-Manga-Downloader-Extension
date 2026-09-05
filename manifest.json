@@ -24,7 +24,9 @@
     "offscreen",
     "scripting",
     "alarms",
-    "declarativeNetRequest"
+    "declarativeNetRequest",
+    "sidePanel",
+    "contextMenus"
   ],
   "host_permissions": [
     "http://*/*",
@@ -54,7 +56,12 @@
         "icons/*",
         "popup/*"
       ],
-      "matches": ["<all_urls>"]
+      "matches": [
+        "<all_urls>"
+      ]
     }
-  ]
+  ],
+  "side_panel": {
+    "default_path": "popup/popup.html"
+  }
 }

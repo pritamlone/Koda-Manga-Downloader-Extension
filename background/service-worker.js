@@ -8,6 +8,31 @@ importScripts('../lib/jszip.min.js');
 
 let isProcessingQueue = false;
 
+// Side Panel Setup
+chrome.runtime.onInstalled.addListener(() => {
+  // Prevent side panel from opening globally automatically
+  if (chrome.sidePanel && chrome.sidePanel.setPanelBehavior) {
+    chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false }).catch((error) => console.error(error));
+  }
+
+  // Create context menu to open side panel
+  chrome.contextMenus.create({
+    id: 'koda-open-side-panel',
+    title: 'Open Koda Manga Downloader in Side Panel',
+    contexts: ['all']
+  });
+});
+
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+  if (info.menuItemId === 'koda-open-side-panel') {
+    // This will open the side panel on the current tab
+    if (chrome.sidePanel && chrome.sidePanel.open) {
+      chrome.sidePanel.open({ tabId: tab.id });
+    }
+  }
+});
+
+
 // Initialize extension storage & alarms
 chrome.runtime.onInstalled.addListener(() => {
   console.log('[Koda Background] Service Worker Installed - Initializing storage...');
